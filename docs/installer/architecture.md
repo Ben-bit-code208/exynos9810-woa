@@ -57,6 +57,20 @@ seams so it is unit-tested without hardware:
 - `TwrpFlasher` — `ITwrpFlasher` plus `HeimdallTwrpFlasher` (drives the
   open-source Heimdall, which flashes RECOVERY by name) and `TwrpFlashService`
   (preference order: native Odin when ported and validated, then Heimdall).
+- `TransferService` — writes prepared images through TWRP with verification: the
+  raw Windows volume to USERDATA in 1-MiB-aligned windows (each read back and
+  hashed), and whole small images (UEFI) to BOOT. It refuses a destination
+  smaller than the image and refuses to write a mounted target.
+
+`Image/VhdxImageBuilder` builds the bootable Windows disk on the PC: it scripts
+diskpart to create an ESP + MSR + NTFS layout in a VHDX, applies the edition,
+injects drivers, runs the slim profile, and runs `bcdboot`. Exporting that
+VHDX's Windows partition to `work\windows.img` (the raw image the transfer stage
+writes to USERDATA) and copying the ESP/BCD to the device EFI partition are the
+remaining integration steps, finalised during on-device validation.
+
+The validated device targets are in `Deploy/PartitionMap`: Windows to
+`USERDATA`, UEFI to `BOOT`, TWRP to `RECOVERY`.
 
 A self-contained C# Odin/Thor implementation is intended as the primary flasher;
 it must be ported from the authoritative Heimdall protocol and validated on the

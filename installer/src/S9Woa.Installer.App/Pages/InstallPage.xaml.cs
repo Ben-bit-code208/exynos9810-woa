@@ -155,6 +155,18 @@ public sealed partial class InstallPage : Page
             case "image":
                 return await RunImageAsync(log, ct);
 
+            case "partition":
+                return await RunPartitionAsync(ct);
+
+            case "transfer":
+                return await RunTransferAsync(log, ct);
+
+            case "uefi":
+                return await RunUefiAsync(log, ct);
+
+            case "firstboot":
+                return await RunFirstBootAsync(ct);
+
             default:
                 await Task.Yield();
                 return stage.Availability == StageAvailability.NotImplemented
@@ -249,6 +261,87 @@ public sealed partial class InstallPage : Page
         await new ImageBuilder(AppServices.Runner).BuildAsync(applyDir, AppServices.InstallImagePath!,
             AppServices.EditionIndex, drivers, AppServices.Profile, log, ct);
         return (true, $"Windows image built at {applyDir} with {drivers.Count} driver packages.");
+    }
+
+    private static TwrpClient? RequireTwrp(out DeviceSnapshot? dev, out string error)
+    {
+        dev = AppServices.CurrentDevice;
+        if (dev is null || dev.Mode != DeviceMode.Recovery)
+        {
+            error = "Boot the phone into TWRP first (the Install TWRP step).";
+            return null;
+        }
+        var twrp = AppServices.Twrp(dev.Serial);
+        if (twrp is null)
+        {
+            error = "adb.exe not found.";
+            return null;
+        }
+        error = "";
+        return twrp;
+    }
+
+    private static async Task<(bool, string)> RunPartitionAsync(CancellationToken ct)
+    {
+        var twrp = RequireTwrp(out _, out var err);
+        if (twrp is null)
+        {
+            return (false, err);
+        }
+        var parts = await twrp.ListPartitionsAsync(ct);
+        var required = new[] { PartitionMap.WindowsTarget, PartitionMap.UefiTarget };
+        var missing = required.Where(n => !parts.Keys.Contains(n, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (missing.Count > 0)
+        {
+            return (false, $"The phone did not expose the expected partition(s): {string.Join(", ", missing)}.");
+        }
+        var userdata = parts.Keys.First(k => k.Equals(PartitionMap.WindowsTarget, StringComparison.OrdinalIgnoreCase));
+        var size = await twrp.PartitionSizeAsync(userdata, ct);
+        return size < 16L << 30
+            ? (false, $"{userdata} is only {size >> 30} GiB; Windows needs a larger target partition.")
+            : (true, $"Partitions verified. {userdata} is {size >> 30} GiB.");
+    }
+
+    private static async Task<(bool, string)> RunTransferAsync(IProgress<string> log, CancellationToken ct)
+    {
+        var twrp = RequireTwrp(out _, out var err);
+        if (twrp is null)
+        {
+            return (false, err);
+        }
+        if (!File.Exists(AppServices.WindowsImagePath))
+        {
+            return (false, $"No Windows image at {AppServices.WindowsImagePath}. Build it (VHDX build + export) first.");
+        }
+        await new TransferService(twrp).WriteRawImageAsync(PartitionMap.WindowsTarget, AppServices.WindowsImagePath,
+            windowMiB: 256, mountToEnsureUnmounted: "/data", log: log, ct: ct);
+        return (true, "Windows written and verified on the phone.");
+    }
+
+    private static async Task<(bool, string)> RunUefiAsync(IProgress<string> log, CancellationToken ct)
+    {
+        var twrp = RequireTwrp(out _, out var err);
+        if (twrp is null)
+        {
+            return (false, err);
+        }
+        if (AppServices.UefiImagePath is null)
+        {
+            return (false, $"Place the UEFI image at payload\\uefi.img next to the installer.");
+        }
+        await new TransferService(twrp).WriteWholePartitionAsync(PartitionMap.UefiTarget, AppServices.UefiImagePath, log, ct);
+        return (true, "UEFI installed to BOOT. RECOVERY keeps TWRP.");
+    }
+
+    private static async Task<(bool, string)> RunFirstBootAsync(CancellationToken ct)
+    {
+        var dev = AppServices.CurrentDevice;
+        if (dev is null || AppServices.Device is null)
+        {
+            return (true, "Unplug the phone and power it on to start Windows.");
+        }
+        await AppServices.Device.RebootAsync(dev.Serial, RebootTarget.System, ct);
+        return (true, "Restarting into Windows. Follow the setup on the phone's screen.");
     }
 
     private void Report(InfoBarSeverity severity, string title, string message)

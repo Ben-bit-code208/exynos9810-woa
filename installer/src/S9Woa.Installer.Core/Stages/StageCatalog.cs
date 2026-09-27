@@ -43,12 +43,12 @@ public static class StageCatalog
         new("unlock", "Unlock the bootloader", "OEM unlock in Developer options, then the Download-mode unlock. Wipes Android.", StageAvailability.Guided, Destructive: true),
         new("twrp", "Install TWRP", "Flash TWRP to RECOVERY from Download mode and boot it once.", StageAvailability.Experimental, Destructive: true),
         new("backup", "Back up the phone", "Copy EFS, modem calibration and the partition table to this PC before anything else is written.", StageAvailability.Experimental),
-        new("partition", "Prepare partitions", "Locate the target partitions by name and verify the validated layout.", StageAvailability.NotImplemented, Destructive: true),
+        new("partition", "Prepare partitions", "Locate the target partitions by name and verify the validated layout.", StageAvailability.Experimental, Destructive: true),
         new("media", "Get Windows", "Use your ISO/ESD, or download ARM64 media from Microsoft.", StageAvailability.Ready),
         new("image", "Build the Windows image", "Apply, add drivers, slim (optional), configure boot and first-run settings.", StageAvailability.Experimental),
-        new("transfer", "Copy Windows to the phone", "Write the image and boot files through TWRP, verifying every block.", StageAvailability.NotImplemented, Destructive: true),
-        new("uefi", "Install UEFI", "Flash the UEFI boot image to BOOT. RECOVERY keeps TWRP.", StageAvailability.NotImplemented, Destructive: true),
-        new("firstboot", "First boot", "Boot Windows and finish setup.", StageAvailability.NotImplemented),
+        new("transfer", "Copy Windows to the phone", "Write the image and boot files through TWRP, verifying every block.", StageAvailability.Experimental, Destructive: true),
+        new("uefi", "Install UEFI", "Flash the UEFI boot image to BOOT. RECOVERY keeps TWRP.", StageAvailability.Experimental, Destructive: true),
+        new("firstboot", "First boot", "Boot Windows and finish setup.", StageAvailability.Experimental),
     ];
 
     public static StageDefinition Get(string id) => All.First(s => s.Id == id);

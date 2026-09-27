@@ -34,17 +34,20 @@ verifies the result.
 | Unlock the bootloader | 🧑 Guided (you do it; the installer verifies) |
 | Install TWRP | 🧪 Experimental (flashes RECOVERY by name via Heimdall) |
 | Back up EFS / modem / partition table | 🧪 Experimental (verified backup to your PC) |
-| Prepare partitions | 🕓 Coming soon |
+| Prepare partitions | 🧪 Experimental (verifies the layout by name) |
 | Get Windows media | ✅ Ready |
 | Build the Windows image (with optional slimming) | 🧪 Experimental (apply + inject drivers + slim) |
-| Copy Windows to the phone | 🕓 Coming soon |
-| Install UEFI | 🕓 Coming soon |
-| First boot | 🕓 Coming soon |
+| Copy Windows to the phone | 🧪 Experimental (raw image → USERDATA, verified per window) |
+| Install UEFI | 🧪 Experimental (UEFI → BOOT, verified) |
+| First boot | 🧪 Experimental (reboots into Windows) |
 
 **Experimental** steps are automated and unit-tested but not yet validated end
 to end on the reference device. They stay off until you tick *Run experimental
 steps* on the Install page. Please only enable them on a device you are prepared
-to recover from the backups this installer makes.
+to recover from the backups this installer makes. The **Copy Windows** step
+writes a raw Windows volume image to USERDATA in verified windows; producing that
+`work\windows.img` (build a bootable VHDX, then export its Windows partition) is
+the last host step being wired — see `docs/installer/architecture.md`.
 
 Quality-of-life tools (e.g. "Restart to TWRP" from inside Windows) live on the
 **Tools** page.

@@ -79,7 +79,7 @@ public sealed partial class TwrpClient
     public async Task<string> Sha256Async(string devicePath, long? bytes = null, CancellationToken ct = default)
     {
         var cmd = bytes is { } n
-            ? $"dd if={devicePath} bs=1048576 count={(n + 1048575) / 1048576} 2>/dev/null | sha256sum"
+            ? $"head -c {n} {devicePath} | sha256sum"
             : $"sha256sum {devicePath}";
         var sum = ParseSha256(await ShellCheckedAsync(cmd, Long, ct).ConfigureAwait(false));
         return sum ?? throw new InvalidOperationException($"Could not hash {devicePath}.");
@@ -90,6 +90,18 @@ public sealed partial class TwrpClient
 
     public Task DdAsync(string source, string destination, CancellationToken ct = default) =>
         ShellCheckedAsync($"dd if={source} of={destination} bs=4194304 conv=fsync", Long, ct);
+
+    /// <summary>Writes a 1-MiB-aligned window of an SD file into a partition at <paramref name="seekMiB"/>.</summary>
+    public Task WritePartitionWindowAsync(string sdFile, string name, long seekMiB, long countMiB, CancellationToken ct = default) =>
+        ShellCheckedAsync($"dd if={sdFile} of={ByName}/{name} bs=1048576 seek={seekMiB} count={countMiB} conv=notrunc,fsync", Long, ct);
+
+    /// <summary>SHA-256 of a 1-MiB-aligned window read back from a partition.</summary>
+    public async Task<string> HashPartitionWindowAsync(string name, long skipMiB, long countMiB, CancellationToken ct = default)
+    {
+        var cmd = $"dd if={ByName}/{name} bs=1048576 skip={skipMiB} count={countMiB} 2>/dev/null | sha256sum";
+        return ParseSha256(await ShellCheckedAsync(cmd, Long, ct).ConfigureAwait(false))
+            ?? throw new InvalidOperationException($"Could not hash a window of {name}.");
+    }
 
     public async Task PullAsync(string devicePath, string hostPath, CancellationToken ct = default)
     {

@@ -27,6 +27,9 @@ internal static class AppServices
     public static string? TwrpImagePath => FirstExisting(Path.Combine(PayloadDirectory, "twrp.img"), Path.Combine(PayloadDirectory, "recovery.img"));
     public static string? UefiImagePath => FirstExisting(Path.Combine(PayloadDirectory, "uefi.img"), Path.Combine(PayloadDirectory, "boot.img"));
 
+    /// <summary>Raw Windows volume image (produced by the VHDX build + export) written to USERDATA.</summary>
+    public static string WindowsImagePath => Path.Combine(WorkDirectory, "windows.img");
+
     public static string? AdbPath { get; } = AdbClient.Locate(AppContext.BaseDirectory);
     public static AdbClient? Adb { get; } = AdbPath is null ? null : new AdbClient(AdbPath, Runner);
     public static DeviceActions? Device { get; } = Adb is null ? null : new DeviceActions(Adb, Runner);

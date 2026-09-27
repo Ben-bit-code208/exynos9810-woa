@@ -96,17 +96,18 @@ public class ImageBuilderTests
     }
 
     [Fact]
-    public async Task BuildFailsWithoutDrivers()
+    public void VhdxScriptCreatesEspMsrAndNtfs()
     {
-        var apply = Directory.CreateTempSubdirectory("s9woa-apply").FullName;
-        try
-        {
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                new ImageBuilder(new RecordingRunner(), @"C:\sys").BuildAsync(apply, @"C:\m\install.wim", 1, [], SlimProfile.None));
-        }
-        finally
-        {
-            Directory.Delete(apply, recursive: true);
-        }
+        var builder = new VhdxImageBuilder(new RecordingRunner(), @"C:\sys");
+        var script = builder.CreateScript(@"C:\img\s9.vhdx", 60000);
+        Assert.Contains("create vdisk file=\"C:\\img\\s9.vhdx\" maximum=60000", script, StringComparison.Ordinal);
+        Assert.Contains("convert gpt", script, StringComparison.Ordinal);
+        Assert.Contains("create partition efi size=260", script, StringComparison.Ordinal);
+        Assert.Contains("format fs=fat32 quick label=System", script, StringComparison.Ordinal);
+        Assert.Contains("create partition msr size=16", script, StringComparison.Ordinal);
+        Assert.Contains("format fs=ntfs quick label=Windows", script, StringComparison.Ordinal);
+        Assert.Contains("assign letter=S", script, StringComparison.Ordinal);
+        Assert.Contains("assign letter=W", script, StringComparison.Ordinal);
+        Assert.Contains("detach vdisk", builder.DetachScript(@"C:\img\s9.vhdx"), StringComparison.Ordinal);
     }
 }
