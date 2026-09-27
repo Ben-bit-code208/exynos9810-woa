@@ -32,12 +32,36 @@ Each `StageDefinition` has an `Availability`:
 - `Ready` — implemented and validated on the reference device.
 - `Guided` — the user performs the step by hand; the installer explains it and
   verifies the result.
+- `Experimental` — automated and unit-tested, but not yet validated end to end
+  on the reference device. The installer runs these only when the user opts in
+  with *Run experimental steps* on the Install page.
 - `NotImplemented` — planned; the installer stops before it.
 
 `InstallState` (persisted as JSON under `%LOCALAPPDATA%\S9WoaInstaller`) records
 per-stage status so an install can resume. When you finish automating a stage,
-change its `Availability` to `Ready` **and** add coverage in the Core tests.
-Wiring for running a stage lives in `Pages/InstallPage.xaml.cs` (`RunStageAsync`).
+add coverage in the Core tests and move it from `Experimental` to `Ready` once it
+is validated on hardware. Wiring for running a stage lives in
+`Pages/InstallPage.xaml.cs` (`RunStageAsync`).
+
+## Deploy engine
+
+`Core/Deploy` holds the device-facing engine, all behind injectable process
+seams so it is unit-tested without hardware:
+
+- `TwrpClient` — adb-over-TWRP primitives: list partitions by name, read size,
+  `dd`, sha256, push/pull. Binary payloads always move as files on the SD card,
+  never as captured stdout, so nothing is corrupted by text decoding.
+- `PartitionMap` — the validated star2lte partition names.
+- `BackupService` — verified identity backup (efs and friends) to the PC, with a
+  device/PC sha256 cross-check and a JSON manifest. Refuses if `efs` is missing.
+- `TwrpFlasher` — `ITwrpFlasher` plus `HeimdallTwrpFlasher` (drives the
+  open-source Heimdall, which flashes RECOVERY by name) and `TwrpFlashService`
+  (preference order: native Odin when ported and validated, then Heimdall).
+
+A self-contained C# Odin/Thor implementation is intended as the primary flasher;
+it must be ported from the authoritative Heimdall protocol and validated on the
+device before it is enabled — a guessed download-mode protocol can brick a phone,
+so it is not hand-written from memory.
 
 ## Release pipeline (maintainers only)
 

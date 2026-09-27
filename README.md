@@ -32,17 +32,36 @@ verifies the result.
 | Check this PC (admin, disk, adb, USB driver) | ✅ Ready |
 | Identify the phone | ✅ Ready |
 | Unlock the bootloader | 🧑 Guided (you do it; the installer verifies) |
-| Install TWRP | 🕓 Coming soon |
-| Back up EFS / modem / partition table | 🕓 Coming soon |
+| Install TWRP | 🧪 Experimental (flashes RECOVERY by name via Heimdall) |
+| Back up EFS / modem / partition table | 🧪 Experimental (verified backup to your PC) |
 | Prepare partitions | 🕓 Coming soon |
-| Get Windows media | 🕓 Coming soon |
-| Build the Windows image (with optional slimming) | 🕓 Coming soon |
+| Get Windows media | ✅ Ready |
+| Build the Windows image (with optional slimming) | 🧪 Experimental (apply + inject drivers + slim) |
 | Copy Windows to the phone | 🕓 Coming soon |
 | Install UEFI | 🕓 Coming soon |
 | First boot | 🕓 Coming soon |
 
+**Experimental** steps are automated and unit-tested but not yet validated end
+to end on the reference device. They stay off until you tick *Run experimental
+steps* on the Install page. Please only enable them on a device you are prepared
+to recover from the backups this installer makes.
+
 Quality-of-life tools (e.g. "Restart to TWRP" from inside Windows) live on the
 **Tools** page.
+
+### Build artefacts the installer expects
+
+Some steps need binaries you build from this repo. Put them next to the
+installer in a `payload\` folder:
+
+| File | Used by | Built from |
+|------|---------|-----------|
+| `payload\twrp.img` | Install TWRP | your TWRP build for star2lte |
+| `payload\uefi.img` | Install UEFI | `firmware\` |
+| `payload\drivers\` | Build the Windows image | `drivers\Exynos9810Ufs`, `drivers\S6SY761Touch` |
+
+`adb.exe` is found on `PATH` or via `winget install Google.PlatformTools`.
+Heimdall (for flashing TWRP) is found on `PATH` or at `tools\heimdall\heimdall.exe`.
 
 ### Build the installer
 

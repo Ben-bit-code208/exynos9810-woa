@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
+using S9Woa.Installer.Core.Deploy;
 using S9Woa.Installer.Core.Device;
 using S9Woa.Installer.Core.Image;
 using S9Woa.Installer.Core.Processes;
@@ -17,18 +18,42 @@ internal static class AppServices
     public static string LogDirectory { get; } = Path.Combine(DataDirectory, "logs");
     public static string LogFile { get; } = Path.Combine(LogDirectory, $"installer-{DateTime.Now:yyyyMMdd-HHmmss}.log");
     public static string WorkDirectory { get; set; } = Path.Combine(DataDirectory, "work");
+    public static string BackupDirectory { get; set; } = Path.Combine(DataDirectory, "backups");
     public static InstallState State { get; } = InstallState.Load(DataDirectory);
+
+    /// <summary>Optional build artefacts placed next to the app: drivers/, twrp.img, uefi.img.</summary>
+    public static string PayloadDirectory { get; } = Path.Combine(AppContext.BaseDirectory, "payload");
+    public static string DriversDirectory { get; set; } = Path.Combine(PayloadDirectory, "drivers");
+    public static string? TwrpImagePath => FirstExisting(Path.Combine(PayloadDirectory, "twrp.img"), Path.Combine(PayloadDirectory, "recovery.img"));
+    public static string? UefiImagePath => FirstExisting(Path.Combine(PayloadDirectory, "uefi.img"), Path.Combine(PayloadDirectory, "boot.img"));
 
     public static string? AdbPath { get; } = AdbClient.Locate(AppContext.BaseDirectory);
     public static AdbClient? Adb { get; } = AdbPath is null ? null : new AdbClient(AdbPath, Runner);
     public static DeviceActions? Device { get; } = Adb is null ? null : new DeviceActions(Adb, Runner);
 
+    public static string? HeimdallPath { get; } = HeimdallTwrpFlasher.Locate(AppContext.BaseDirectory);
+
+    /// <summary>TWRP flasher preference order: native (when ported and validated) then Heimdall.</summary>
+    public static TwrpFlashService TwrpFlasher { get; } = new(
+        HeimdallPath is null ? [] : [new HeimdallTwrpFlasher(HeimdallPath, Runner)]);
+
+    public static TwrpClient? Twrp(string serial) => AdbPath is null ? null : new TwrpClient(AdbPath, serial, Runner);
+
     public static DeviceSnapshot? CurrentDevice { get; set; }
     public static bool RisksAccepted { get; set; }
+
+    /// <summary>Opt-in to run stages that are automated but not yet validated on the reference device.</summary>
+    public static bool ExperimentalEnabled { get; set; }
 
     /// <summary>In-Windows (on the phone) Restart-to-TWRP over the UFS vendor ticket.</summary>
     public static RecoveryTicketService RecoveryTickets { get; } =
         new(new ScsiPassThroughTransportFactory(), new ShutdownExeRestart());
+
+    /// <summary>Chosen Windows edition index inside the media, resolved by the media stage.</summary>
+    public static string? InstallImagePath { get; set; }
+    public static int EditionIndex { get; set; } = 1;
+
+    private static string? FirstExisting(params string[] paths) => paths.FirstOrDefault(File.Exists);
 
     public static string? MediaPath { get; set; } = State.MediaPath;
     public static SlimProfile Profile { get; set; } =

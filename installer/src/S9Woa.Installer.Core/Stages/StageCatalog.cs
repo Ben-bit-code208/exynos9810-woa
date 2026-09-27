@@ -21,6 +21,12 @@ public enum StageAvailability
     /// <summary>The user performs this step by hand; the installer guides and verifies.</summary>
     Guided,
 
+    /// <summary>
+    /// Automated and unit-tested, but not yet validated end to end on the reference
+    /// device. Runs only when the user opts in to experimental stages.
+    /// </summary>
+    Experimental,
+
     /// <summary>Planned; the installer stops before this stage.</summary>
     NotImplemented,
 }
@@ -35,11 +41,11 @@ public static class StageCatalog
         new("host", "Check this PC", "Administrator rights, disk space, adb and Samsung USB driver.", StageAvailability.Ready),
         new("identify", "Identify the phone", "Model, firmware and bootloader state over ADB.", StageAvailability.Ready),
         new("unlock", "Unlock the bootloader", "OEM unlock in Developer options, then the Download-mode unlock. Wipes Android.", StageAvailability.Guided, Destructive: true),
-        new("twrp", "Install TWRP", "Flash TWRP to RECOVERY from Download mode and boot it once.", StageAvailability.NotImplemented, Destructive: true),
-        new("backup", "Back up the phone", "Copy EFS, modem calibration and the partition table to this PC before anything else is written.", StageAvailability.NotImplemented),
+        new("twrp", "Install TWRP", "Flash TWRP to RECOVERY from Download mode and boot it once.", StageAvailability.Experimental, Destructive: true),
+        new("backup", "Back up the phone", "Copy EFS, modem calibration and the partition table to this PC before anything else is written.", StageAvailability.Experimental),
         new("partition", "Prepare partitions", "Locate the target partitions by name and verify the validated layout.", StageAvailability.NotImplemented, Destructive: true),
-        new("media", "Get Windows", "Use your ISO/ESD, or download ARM64 media from Microsoft.", StageAvailability.NotImplemented),
-        new("image", "Build the Windows image", "Apply, add drivers, slim (optional), configure boot and first-run settings.", StageAvailability.NotImplemented),
+        new("media", "Get Windows", "Use your ISO/ESD, or download ARM64 media from Microsoft.", StageAvailability.Ready),
+        new("image", "Build the Windows image", "Apply, add drivers, slim (optional), configure boot and first-run settings.", StageAvailability.Experimental),
         new("transfer", "Copy Windows to the phone", "Write the image and boot files through TWRP, verifying every block.", StageAvailability.NotImplemented, Destructive: true),
         new("uefi", "Install UEFI", "Flash the UEFI boot image to BOOT. RECOVERY keeps TWRP.", StageAvailability.NotImplemented, Destructive: true),
         new("firstboot", "First boot", "Boot Windows and finish setup.", StageAvailability.NotImplemented),

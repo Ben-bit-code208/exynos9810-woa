@@ -20,6 +20,7 @@ public sealed partial class StageItem(StageDefinition definition) : INotifyPrope
     public string Badge => definition.Availability switch
     {
         StageAvailability.Guided => "You do this step",
+        StageAvailability.Experimental => "Experimental",
         StageAvailability.NotImplemented => "Coming soon",
         _ => definition.Destructive ? "Writes to the phone" : "",
     };
