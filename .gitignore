@@ -1,0 +1,45 @@
+# Local release denylist: never commit.
+.release-denylist.txt
+
+# Build output and toolchains
+Build/
+out/
+edk2/
+edk2-platforms/
+*.efi
+*.fd
+*.img
+*.sys
+*.dll
+*.exe
+*.pdb
+*.obj
+*.lib
+*.cat
+*.cer
+*.pfx
+x64/
+ARM64/
+
+# Installer state, backups and media (device-specific, may contain EFS/IMEI)
+installer-work/
+backups/
+*.wim
+*.esd
+*.iso
+*.vhdx
+
+# Python
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# .NET
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+
+# Private scrub patches (contain the removed text); see tools/release/import_sources.py
+/.release-patches/

@@ -1,0 +1,28 @@
+## @file
+#  ACPI tables for Star2LtePkg (Exynos 9810 / Galaxy S9+).
+#  Installed by MdeModulePkg AcpiPlatformDxe via EFI_ACPI_TABLE_PROTOCOL.
+##
+
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = AcpiTables
+  FILE_GUID                      = 11111111-2222-3333-4444-555555555501
+  MODULE_TYPE                    = USER_DEFINED
+  VERSION_STRING                 = 1.0
+
+[Sources]
+  Dsdt.asl                       # CPU baseline plus supported HSI2C10/SEC_TS touch path
+  Fadt.aslc                      # Fixed table: HW-reduced + PSCI
+  Madt.aslc                      # GIC: GICC per core, GICD (GICv2 / GIC-400)
+  Pptt.aslc                      # Processor topology: package / 2 clusters / 8 cores
+  Gtdt.aslc                      # ARMv8 architected generic timer
+  # TODO: Dbg2.aslc   (debug port — only once a Windows-recognized transport exists)
+  # TODO: Spcr.aslc   (serial console redirect)
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  Silicon/Exynos9810Pkg/Exynos9810Pkg.dec
+
+[BuildOptions]
+  # iasl flags if needed

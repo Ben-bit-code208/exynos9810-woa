@@ -1,0 +1,32 @@
+## @file
+#  Installs Star2Lte static ACPI tables from the firmware volume.
+##
+
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = Star2LteAcpiPlatformDxe
+  FILE_GUID                      = 11111111-2222-3333-4444-555555555542
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 0.1
+  ENTRY_POINT                    = Star2LteAcpiPlatformEntry
+
+[Sources]
+  Star2LteAcpiPlatformDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  BaseMemoryLib
+  CacheMaintenanceLib
+  DebugLib
+
+[Protocols]
+  gEfiAcpiTableProtocolGuid       ## CONSUMES
+  gEfiFirmwareVolume2ProtocolGuid ## CONSUMES
+
+[Depex]
+  gEfiAcpiTableProtocolGuid AND gEfiFirmwareVolume2ProtocolGuid

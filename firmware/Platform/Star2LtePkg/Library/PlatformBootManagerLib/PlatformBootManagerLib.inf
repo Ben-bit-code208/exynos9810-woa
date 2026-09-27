@@ -1,0 +1,62 @@
+## @file
+#  PlatformBootManagerLib for Star2LtePkg — BDS glue that boots Windows.
+#  See PlatformBootManagerLib.c.
+##
+
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = PlatformBootManagerLib
+  FILE_GUID                      = 11111111-2222-3333-4444-555555555550
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 0.1
+  LIBRARY_CLASS                  = PlatformBootManagerLib|DXE_DRIVER
+
+[Sources]
+  PlatformBootManagerLib.c
+  UsbDebug.c
+  UsbDebugHid.c
+  UsbDebug.h
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  Silicon/Exynos9810Pkg/Exynos9810Pkg.dec
+
+[LibraryClasses]
+  BaseLib
+  DebugLib
+  UefiLib
+  UefiBootServicesTableLib
+  UefiRuntimeServicesTableLib
+  MemoryAllocationLib
+  DevicePathLib
+  UefiBootManagerLib
+  PrintLib
+  BaseMemoryLib
+  CacheMaintenanceLib
+  IoLib
+  TimerLib
+  ArmSmcLib
+
+[Protocols]
+  gEfiGraphicsOutputProtocolGuid           ## CONSUMES
+  gEfiSimpleFileSystemProtocolGuid         ## CONSUMES
+  gEfiDevicePathProtocolGuid               ## CONSUMES
+  gEfiLoadedImageProtocolGuid              ## CONSUMES
+  gEfiBlockIoProtocolGuid                  ## CONSUMES
+  gEfiExtScsiPassThruProtocolGuid          ## CONSUMES
+  gEfiScsiIoProtocolGuid                   ## CONSUMES
+  gEdkiiUfsHostControllerProtocolGuid      ## CONSUMES
+  gEfiAcpiTableProtocolGuid                ## CONSUMES
+  gEfiAcpiSdtProtocolGuid                  ## CONSUMES
+  gEfiCpuArchProtocolGuid                  ## CONSUMES
+  gEfiMemoryAttributeProtocolGuid          ## CONSUMES
+  gEfiPartitionInfoProtocolGuid            ## CONSUMES
+
+[Guids]
+  gEfiAcpi10TableGuid
+  gEfiAcpi20TableGuid
+  gEfiFileSystemInfoGuid
+  gEfiGlobalVariableGuid
+  gEfiSmbios3TableGuid
+  gEfiSmbiosTableGuid

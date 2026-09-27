@@ -1,0 +1,40 @@
+Windows on the Galaxy S9+ (Exynos 9810)
+=======================================
+
+This project would not exist without the following work. Our thanks to their
+authors and communities.
+
+TianoCore / EDK2
+  The UEFI firmware is built on EDK2 (https://github.com/tianocore/edk2),
+  BSD-2-Clause-Patent. Platform and Silicon packages here are original work that
+  links against EDK2 modules.
+
+The Linux kernel and the mainline Exynos 9810 / star2lte support
+  Hardware bring-up knowledge (clocks, regulators, pinctrl, device tree) comes
+  from the mainline Linux port of the Galaxy S9. GPL-2.0.
+
+postmarketOS
+  The postmarketOS community's star2lte work and documentation were an
+  invaluable reference for booting a mainline stack on this device.
+
+Samsung sec_ts / s6sy761 touchscreen driver — Andi Shyti and contributors
+  drivers/S6SY761Touch/ is derived from the upstream Linux sec_ts / s6sy761
+  driver. GPL-2.0-only. The original copyright and license notices are retained
+  in that subtree.
+
+TWRP (Team Win Recovery Project)
+  The recovery used to stage and write the Windows image on the device.
+
+tiny11builder
+  The optional image-slimming profiles are inspired by the tiny11builder
+  approach to trimming a Windows image.
+
+Microsoft
+  Windows, the Windows App SDK and WinUI 3. Windows media is provided by the
+  user or downloaded from Microsoft; no Microsoft binaries are redistributed
+  here.
+
+Trademarks (Samsung, Galaxy, Exynos, Windows, Microsoft, and others) belong to
+their respective owners and are used only to identify the hardware and software
+this project targets. This project is not affiliated with or endorsed by any of
+them.

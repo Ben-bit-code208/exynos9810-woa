@@ -1,0 +1,149 @@
+/** @file
+  MADT — Multiple APIC Description Table (GIC) for Exynos 9810 / Galaxy S9(+).
+
+  Describes the interrupt controller to Windows. Exynos 9810 uses an
+  **ARM GIC-400, which is GICv2** (memory-mapped CPU interface — NOT GICv3
+  redistributors). So each GICC structure carries the physical GICC base, the
+  distributor is declared as version 2, and there are NO GICR structures.
+
+  VERIFIED from arch/arm64/boot/dts/exynos/exynos9810.dtsi:
+    interrupt-controller@10101000 compatible "arm,gic-400"
+      reg = GICD 0x10101000, GICC 0x10102000, GICH 0x10104000, GICV 0x10106000
+    cpu@0..3   = Cortex-A55 (LITTLE) MPIDR 0x0..0x3
+    cpu@100..3 = Mongoose-M3 (big)   MPIDR 0x100..0x103, enable-method "psci"
+
+  Windows ARM64 supports GICv2 (the Lumia 950 WoA port runs on GICv2).
+**/
+
+#include "Star2LteAcpiHeader.h"
+#include <IndustryStandard/Acpi63.h>
+#include <Platform/Exynos9810.h>
+
+#define STAR2LTE_NUM_CORES  8
+
+//
+// GICv2 bases (VERIFIED). GICV/GICH are the virtualization-extension windows;
+// Windows itself only needs GICD + GICC, but GIC-400 provides all four.
+//
+#define STAR2LTE_GICD_BASE   EXYNOS_GICD_BASE   // 0x10101000
+#define STAR2LTE_GICC_BASE   EXYNOS_GICC_BASE   // 0x10102000
+#define STAR2LTE_GICH_BASE   EXYNOS_GICH_BASE   // 0x10104000
+#define STAR2LTE_GICV_BASE   EXYNOS_GICV_BASE   // 0x10106000
+
+//
+// PMU overflow GSIV. DT lists per-core SPIs (A55: 144-147, M3: 167-170); a
+// single GICC field can't express per-core SPIs, so leave 0 and describe the
+// PMU separately later if needed.
+//
+#define STAR2LTE_PMU_GSIV         0
+#define STAR2LTE_VGIC_MAINT_GSIV  25
+
+//
+// Per-core MPIDR (Aff1<<8 | Aff0), VERIFIED from the cpu@N reg values:
+//   cluster 0 (A55, LITTLE): 0x000..0x003
+//   cluster 1 (M3,  big):    0x100..0x103
+//
+#define MPIDR_CORE(Cluster, Cpu)  (((Cluster) << 8) | (Cpu))
+
+//
+// ProcessorPowerEfficiencyClass: 0 = highest performance. big (M3)=0,
+// LITTLE (A55)=1 so the Windows scheduler understands the asymmetry.
+//
+#define EFF_BIG     0
+#define EFF_LITTLE  1
+
+//
+// UNIPROCESSOR-BOOT ISOLATION TEST (2026-07-02): the winload->kernel handoff (=KCTX)
+// and the boot-CPU/MADT ordering (boot MPIDR 0x0 == GICC0) are both confirmed sane, so
+// the leading suspect for the non-deterministic post-logo kernel hang is PSCI secondary-
+// core bring-up. When enabled, only the boot core (GICC0, MPIDR 0x0) is marked ENABLED,
+// so Windows boots single-core and never PSCI CPU_ONs the 7 secondaries. If the boot then
+// gets further / becomes deterministic, SMP/PSCI is implicated. Set to 0 to restore SMP.
+//
+// RETIRED 2026-08-02: the post-logo hang was root-caused to the UFS sync-path
+// HostAdapterStatus defect (UfsPassThruHci.c), fixed in boot-v6, which the device owner
+// confirmed boots Windows with working storage. The isolation test has served its
+// purpose; SMP is re-enabled here. Set back to 1 only to re-isolate PSCI bring-up.
+//
+#ifndef STAR2LTE_UNIPROCESSOR_BOOT
+#define STAR2LTE_UNIPROCESSOR_BOOT  0
+#endif
+
+#if STAR2LTE_UNIPROCESSOR_BOOT
+#define STAR2LTE_SECONDARY_GIC_FLAGS  0
+#else
+#define STAR2LTE_SECONDARY_GIC_FLAGS  EFI_ACPI_6_3_GIC_ENABLED
+#endif
+
+//
+// Big-cluster enablement knob.
+//
+// The earlier LITTLE-CLUSTER-ONLY gate was useful for isolating the PSCI bring-up
+// path, but the current firmware stack is now expected to expose the full 4xA55 +
+// 4xM3 topology to Windows. Leave the guard in place as a fallback switch so an
+// isolation build can still be produced, but default it to 0 so the shipped image
+// advertises all eight processors.
+//
+#ifndef STAR2LTE_LITTLE_CLUSTER_ONLY
+#define STAR2LTE_LITTLE_CLUSTER_ONLY  0
+#endif
+
+#if STAR2LTE_LITTLE_CLUSTER_ONLY
+#define STAR2LTE_BIG_GIC_FLAGS  0
+#else
+#define STAR2LTE_BIG_GIC_FLAGS  STAR2LTE_SECONDARY_GIC_FLAGS
+#endif
+
+#define STAR2LTE_GICC_INIT(GicId, AcpiCpuUid, Mpidr, Flags, PmuIrq, GicBase, GicVBase, GicHBase, VgicGsiv, GicRBase, Efficiency) \
+  { \
+    EFI_ACPI_6_3_GIC, sizeof (EFI_ACPI_6_3_GIC_STRUCTURE), 0, \
+    (GicId), (AcpiCpuUid), (Flags), 0, (PmuIrq), 0, \
+    (GicBase), (GicVBase), (GicHBase), (VgicGsiv), (GicRBase), \
+    (Mpidr), (Efficiency), 0, 0 \
+  }
+
+#define STAR2LTE_GICD_INIT(GicDistHwId, GicDistBase, GicDistVector, GicVersion) \
+  { \
+    EFI_ACPI_6_3_GICD, sizeof (EFI_ACPI_6_3_GIC_DISTRIBUTOR_STRUCTURE), 0, \
+    (GicDistHwId), (GicDistBase), (GicDistVector), (GicVersion), { 0, 0, 0 } \
+  }
+
+#pragma pack (1)
+typedef struct {
+  EFI_ACPI_6_3_MULTIPLE_APIC_DESCRIPTION_TABLE_HEADER  Header;
+  EFI_ACPI_6_3_GIC_STRUCTURE                           GicC[STAR2LTE_NUM_CORES];
+  EFI_ACPI_6_3_GIC_DISTRIBUTOR_STRUCTURE               GicD;
+} STAR2LTE_MADT;
+#pragma pack ()
+
+STATIC STAR2LTE_MADT  Madt = {
+  {
+    ACPI_HEADER (
+      EFI_ACPI_6_3_MULTIPLE_APIC_DESCRIPTION_TABLE_SIGNATURE,
+      STAR2LTE_MADT,
+      EFI_ACPI_6_3_MULTIPLE_APIC_DESCRIPTION_TABLE_REVISION
+      ),
+    0,    // LocalApicAddress — 0 on ARM
+    0,    // Flags            — 0 on ARM (no PC-AT 8259)
+  },
+  {
+    // GICv2: GicBase = physical GICC; GicVBase/GicHBase = GICV/GICH; GicRBase = 0.
+    //
+    // LITTLE cores (A55), cluster 0:
+    STAR2LTE_GICC_INIT (0, 0, MPIDR_CORE (0, 0), EFI_ACPI_6_3_GIC_ENABLED, STAR2LTE_PMU_GSIV, STAR2LTE_GICC_BASE, STAR2LTE_GICV_BASE, STAR2LTE_GICH_BASE, STAR2LTE_VGIC_MAINT_GSIV, 0, EFF_LITTLE),
+    STAR2LTE_GICC_INIT (1, 1, MPIDR_CORE (0, 1), STAR2LTE_SECONDARY_GIC_FLAGS, STAR2LTE_PMU_GSIV, STAR2LTE_GICC_BASE, STAR2LTE_GICV_BASE, STAR2LTE_GICH_BASE, STAR2LTE_VGIC_MAINT_GSIV, 0, EFF_LITTLE),
+    STAR2LTE_GICC_INIT (2, 2, MPIDR_CORE (0, 2), STAR2LTE_SECONDARY_GIC_FLAGS, STAR2LTE_PMU_GSIV, STAR2LTE_GICC_BASE, STAR2LTE_GICV_BASE, STAR2LTE_GICH_BASE, STAR2LTE_VGIC_MAINT_GSIV, 0, EFF_LITTLE),
+    STAR2LTE_GICC_INIT (3, 3, MPIDR_CORE (0, 3), STAR2LTE_SECONDARY_GIC_FLAGS, STAR2LTE_PMU_GSIV, STAR2LTE_GICC_BASE, STAR2LTE_GICV_BASE, STAR2LTE_GICH_BASE, STAR2LTE_VGIC_MAINT_GSIV, 0, EFF_LITTLE),
+    // big cores (M3), cluster 1:
+    STAR2LTE_GICC_INIT (4, 4, MPIDR_CORE (1, 0), STAR2LTE_BIG_GIC_FLAGS, STAR2LTE_PMU_GSIV, STAR2LTE_GICC_BASE, STAR2LTE_GICV_BASE, STAR2LTE_GICH_BASE, STAR2LTE_VGIC_MAINT_GSIV, 0, EFF_BIG),
+    STAR2LTE_GICC_INIT (5, 5, MPIDR_CORE (1, 1), STAR2LTE_BIG_GIC_FLAGS, STAR2LTE_PMU_GSIV, STAR2LTE_GICC_BASE, STAR2LTE_GICV_BASE, STAR2LTE_GICH_BASE, STAR2LTE_VGIC_MAINT_GSIV, 0, EFF_BIG),
+    STAR2LTE_GICC_INIT (6, 6, MPIDR_CORE (1, 2), STAR2LTE_BIG_GIC_FLAGS, STAR2LTE_PMU_GSIV, STAR2LTE_GICC_BASE, STAR2LTE_GICV_BASE, STAR2LTE_GICH_BASE, STAR2LTE_VGIC_MAINT_GSIV, 0, EFF_BIG),
+    STAR2LTE_GICC_INIT (7, 7, MPIDR_CORE (1, 3), STAR2LTE_BIG_GIC_FLAGS, STAR2LTE_PMU_GSIV, STAR2LTE_GICC_BASE, STAR2LTE_GICV_BASE, STAR2LTE_GICH_BASE, STAR2LTE_VGIC_MAINT_GSIV, 0, EFF_BIG),
+  },
+  STAR2LTE_GICD_INIT (0, STAR2LTE_GICD_BASE, 0, EFI_ACPI_6_3_GIC_V2),
+};
+
+//
+// Referenced by AcpiPlatformDxe so the linker keeps the table.
+//
+VOID *CONST  ReferenceAcpiTable = &Madt;

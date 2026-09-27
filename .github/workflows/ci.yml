@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  release-gate:
+    name: Release scan and importer tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Leak scan
+        run: python tools/release/scan.py
+      - name: Importer tests
+        run: python -m pytest -q tools/release/tests
+
+  installer:
+    name: Build and test the installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Core tests
+        run: dotnet test installer/tests/S9Woa.Installer.Core.Tests/S9Woa.Installer.Core.Tests.csproj -p:Platform=x64 -c Release --nologo
+      - name: Build the app (x64)
+        run: dotnet build installer/src/S9Woa.Installer.App/S9Woa.Installer.App.csproj -p:Platform=x64 -c Release --nologo

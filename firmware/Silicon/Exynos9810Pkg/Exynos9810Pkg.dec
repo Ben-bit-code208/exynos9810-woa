@@ -1,0 +1,35 @@
+## @file
+#  Silicon package declaration for Exynos 9810.
+#  PCD defaults reflect values verified from mainline Linux DT (2026-06);
+#  the platform DSC overrides them. See Include/Platform/Exynos9810.h.
+##
+
+[Defines]
+  DEC_SPECIFICATION              = 0x0001001B
+  PACKAGE_NAME                   = Exynos9810Pkg
+  PACKAGE_GUID                   = 11111111-2222-3333-4444-555555555510
+  PACKAGE_VERSION                = 0.1
+
+[Includes]
+  Include
+
+[Guids]
+  gExynos9810TokenSpaceGuid = { 0xe9810000, 0x0001, 0x0001, { 0xa0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x98, 0x10 } }
+
+[PcdsFixedAtBuild]
+  ## Debug UART base. Candidate 0x10440000 (PERIC0 USI/UART) — NOT in mainline,
+  ## confirm on-device. Consumed by Exynos9810SerialPortLib.
+  gExynos9810TokenSpaceGuid.PcdSerialRegisterBase|0x0000000010440000|UINT64|0x00000001
+
+  ## DRAM base. VERIFIED 0x80000000 (DT memory@ node).
+  gExynos9810TokenSpaceGuid.PcdSystemMemoryBase|0x0000000080000000|UINT64|0x00000002
+
+  ## DRAM size. VERIFIED bank0 = 0x3C800000 (conservative subset; see header).
+  gExynos9810TokenSpaceGuid.PcdSystemMemorySize|0x000000003C800000|UINT64|0x00000003
+
+  ## GIC distributor (GICD) base. VERIFIED 0x10101000 (gic-400 = GICv2).
+  gExynos9810TokenSpaceGuid.PcdGicDistributorBase|0x0000000010101000|UINT64|0x00000004
+
+  ## GIC CPU interface (GICC) base. VERIFIED 0x10102000 (GICv2, not GICv3 GICR).
+  gExynos9810TokenSpaceGuid.PcdGicInterfaceBase|0x0000000010102000|UINT64|0x00000005
+

@@ -1,0 +1,32 @@
+## @file
+#  Publishes verified Exynos 9810 DRAM bank-1 ranges to DXE.
+##
+
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = Star2LteRamManagerDxe
+  FILE_GUID                      = 11111111-2222-3333-4444-555555555543
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 0.1
+  ENTRY_POINT                    = Star2LteRamManagerEntry
+
+[Sources]
+  Star2LteRamManagerDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  UefiCpuPkg/UefiCpuPkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  DxeServicesTableLib
+  ArmMmuLib
+  BaseLib
+  DebugLib
+
+[Protocols]
+  gEfiCpuArchProtocolGuid        ## CONSUMES
+
+[Depex]
+  gEfiCpuArchProtocolGuid

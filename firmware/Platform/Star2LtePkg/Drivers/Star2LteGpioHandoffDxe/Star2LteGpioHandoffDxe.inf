@@ -1,0 +1,28 @@
+## @file
+# SPDX-License-Identifier: BSD-2-Clause-Patent
+# Default off. The exact-baseline builder supplies generated ACPI identity data.
+[Defines]
+  INF_VERSION = 0x0001001B
+  BASE_NAME = Star2LteGpioHandoffDxe
+  FILE_GUID = 98100003-4768-4F46-9100-140500009041
+  MODULE_TYPE = DXE_DRIVER
+  VERSION_STRING = 1.0
+  ENTRY_POINT = GpioHandoffEntry
+[Sources]
+  GpioHandoffDxe.c
+  GpioHandoffCore.c
+  ../Star2LteUsbHandoffObserver/UsbHandoffObserver.c
+  ../Star2LteHsi40HandoffDxe/Hsi40HandoffCore.c
+  ../Star2LteHsi40HandoffDxe/Hsi40HandoffBackend.c
+  ../Star2LteHsi40HandoffDxe/Hsi40Census.c
+  ../Star2LteHsi40HandoffDxe/Hsi40CensusBackend.c
+  ../Star2LteHsi40HandoffDxe/Hsi40ColdInit.c
+  ../Star2LteHsi40HandoffDxe/Hsi40ResetTrial.c
+  ../Star2LteHsi40HandoffDxe/Hsi40ColdTrial.c
+  ../Star2LteUart1HandoffDxe/Uart1Census.c
+  ../Star2LteUart1HandoffDxe/Uart1CensusBackend.c
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Exynos9810Pkg/Exynos9810Pkg.dec
+[Depex]
+  gEfiAcpiTableProtocolGuid

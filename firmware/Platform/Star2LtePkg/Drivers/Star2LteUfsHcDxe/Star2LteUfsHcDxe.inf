@@ -1,0 +1,45 @@
+## @file
+#  Star2LteUfsHcDxe — platform UFS Host Controller protocol producer for the
+#  Exynos 9810 UFS host (ufs@0x11120000). Lets the in-box UfsPassThruDxe ->
+#  ScsiBusDxe -> ScsiDiskDxe stack drive the Samsung UFS device. See
+#  Star2LteUfsHcDxe.c.
+##
+
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = Star2LteUfsHcDxe
+  FILE_GUID                      = 11111111-2222-3333-4444-555555555541
+  MODULE_TYPE                    = DXE_DRIVER
+  VERSION_STRING                 = 0.1
+  ENTRY_POINT                    = Star2LteUfsHcEntry
+
+[Sources]
+  Star2LteUfsHcDxe.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  ArmPkg/ArmPkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+  Silicon/Exynos9810Pkg/Exynos9810Pkg.dec
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  DxeServicesTableLib
+  BaseMemoryLib
+  MemoryAllocationLib
+  DevicePathLib
+  CacheMaintenanceLib
+  BaseLib
+  IoLib
+  DebugLib
+
+[Protocols]
+  gEdkiiUfsHostControllerProtocolGuid    ## PRODUCES
+  gEfiDevicePathProtocolGuid             ## PRODUCES
+  gEdkiiUfsHcPlatformProtocolGuid        ## PRODUCES
+  gHardwareInterruptProtocolGuid         ## CONSUMES
+
+[Depex]
+  TRUE

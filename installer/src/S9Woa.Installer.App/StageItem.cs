@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+using System.ComponentModel;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using S9Woa.Installer.Core.Stages;
+
+namespace S9Woa.Installer.App;
+
+[Microsoft.UI.Xaml.Data.Bindable]
+public sealed partial class StageItem(StageDefinition definition) : INotifyPropertyChanged
+{
+    private StageStatus _status;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public StageDefinition Definition => definition;
+    public string Title => definition.Title;
+    public string Summary => definition.Summary;
+
+    public string Badge => definition.Availability switch
+    {
+        StageAvailability.Guided => "You do this step",
+        StageAvailability.NotImplemented => "Coming soon",
+        _ => definition.Destructive ? "Writes to the phone" : "",
+    };
+
+    public Visibility BadgeVisibility => Badge.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+
+    public StageStatus Status
+    {
+        get => _status;
+        set
+        {
+            _status = value;
+            foreach (var n in new[] { nameof(Status), nameof(Glyph), nameof(Brush), nameof(RingActive) })
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
+            }
+        }
+    }
+
+    public bool RingActive => _status == StageStatus.Running;
+
+    public string Glyph => _status switch
+    {
+        StageStatus.Done => "\uE73E",
+        StageStatus.Failed => "\uE711",
+        StageStatus.Skipped => "\uE8D8",
+        StageStatus.Running => "",
+        _ => "\uEA3A",
+    };
+
+    public Brush Brush => (Brush)Application.Current.Resources[_status switch
+    {
+        StageStatus.Done => "SystemFillColorSuccessBrush",
+        StageStatus.Failed => "SystemFillColorCriticalBrush",
+        _ => "TextFillColorTertiaryBrush",
+    }];
+}

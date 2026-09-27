@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+using S9Woa.Installer.Core;
+using S9Woa.Installer.Core.Device;
+
+namespace S9Woa.Installer.Core.Tests;
+
+public class DeviceTests
+{
+    [Fact]
+    public void ParsesSamsungBuild()
+    {
+        var b = SamsungBuild.TryParse("G965FXXUHFVG4", "G965F")!;
+        Assert.Equal("XX", b.Csc);
+        Assert.Equal('U', b.UpdateType);
+        Assert.Equal(17, b.BinaryRevision);
+        Assert.Equal(('V', 'G', '4'), b.ReleaseKey);
+        Assert.Null(SamsungBuild.TryParse("G960FXXUHFVG4", "G965F"));
+        Assert.Null(SamsungBuild.TryParse("garbage", "G965F"));
+    }
+
+    [Fact]
+    public void ParsesAdbDevicesAndGetprop()
+    {
+        var devices = AdbClient.ParseDevices(
+            "* daemon started successfully\r\nList of devices attached\r\n" +
+            "ABC123 device product:star2ltexx model:SM_G965F device:star2lte transport_id:1\r\n" +
+            "DEF456 unauthorized transport_id:2\r\nGHI789 recovery\r\n");
+        Assert.Collection(devices,
+            d => { Assert.Equal(AdbState.Device, d.State); Assert.Equal("SM_G965F", d.Model); Assert.Equal("star2ltexx", d.Product); },
+            d => Assert.Equal(AdbState.Unauthorized, d.State),
+            d => Assert.Equal(AdbState.Recovery, d.State));
+
+        var props = AdbClient.ParseGetprop("[ro.product.model]: [SM-G965F]\r\n[empty]: []\nnoise\n");
+        Assert.Equal("SM-G965F", props["ro.product.model"]);
+        Assert.Equal("", props["empty"]);
+        Assert.Equal(2, props.Count);
+    }
+
+    private static DeviceSnapshot Snap(string? bootloader = "G965FXXUHFVG4", string model = "SM-G965F",
+        DeviceMode mode = DeviceMode.Android, bool? locked = true, bool? oem = true) =>
+        new("S", mode, model, "star2lte", "exynos9810", bootloader, "10", null, oem, locked, "green", false);
+
+    [Theory]
+    [InlineData("G965FXXUHFVG4", CheckSeverity.Pass)]
+    [InlineData("G965FXXUGFVB1", CheckSeverity.Blocker)]
+    [InlineData("G965FXXUHFVH1", CheckSeverity.Warning)]
+    [InlineData(null, CheckSeverity.Warning)]
+    public void GatesBootloaderVersion(string? bootloader, CheckSeverity expected)
+    {
+        var r = DeviceEligibility.Evaluate(Snap(bootloader)).Single(c => c.Id == "bootloader");
+        Assert.Equal(expected, r.Severity);
+    }
+
+    [Fact]
+    public void RejectsOtherModelsAndUnauthorized()
+    {
+        Assert.True(DeviceEligibility.Evaluate(Snap(model: "SM-G960F")).HasBlockers());
+        Assert.True(DeviceEligibility.Evaluate(Snap(model: "SM-G965U")).HasBlockers());
+        Assert.True(DeviceEligibility.Evaluate(Snap(mode: DeviceMode.Unauthorized)).HasBlockers());
+        Assert.False(DeviceEligibility.Evaluate(Snap()).HasBlockers());
+    }
+
+    [Theory]
+    [InlineData(RebootTarget.System, "-s S reboot")]
+    [InlineData(RebootTarget.Recovery, "-s S reboot recovery")]
+    [InlineData(RebootTarget.Download, "-s S reboot download")]
+    public void BuildsRebootArguments(RebootTarget target, string expected) =>
+        Assert.Equal(expected, string.Join(' ', DeviceActions.RebootArguments("S", target)));
+}

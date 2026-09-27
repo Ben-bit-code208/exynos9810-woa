@@ -1,0 +1,11 @@
+# Release-scan exemptions: <glob> <rule|*>
+# The scanner and its tests necessarily contain the patterns they detect.
+tools/release/scan.py *
+tools/release/tests/* *
+# GPL-2.0 copyright notices of the upstream Linux sec_ts/s6sy761 author must be kept.
+drivers/S6SY761Touch/Device.c email
+drivers/S6SY761Touch/S6SY761Touch.inf email
+# The WinPE RAM-disk system root (drive X) is not a workspace path.
+drivers/S6SY761Touch/TouchDriverUpdate.h workspace-path
+# The application icon is an intentional binary asset.
+installer/src/S9Woa.Installer.App/Assets/AppIcon.ico binary

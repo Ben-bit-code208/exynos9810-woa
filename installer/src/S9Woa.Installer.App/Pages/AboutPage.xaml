@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="S9Woa.Installer.App.Pages.AboutPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageRootStyle}">
+        <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Left">
+            <TextBlock Text="About" Style="{StaticResource PageTitleStyle}" />
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Galaxy S9+ Windows Installer" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="VersionText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock TextWrapping="Wrap" Text="Open-source UEFI firmware, Windows drivers and installer for the Samsung Galaxy S9+ (Exynos 9810). Not affiliated with or endorsed by Samsung or Microsoft." />
+                    <TextBlock TextWrapping="Wrap" Text="Licensed under BSD-2-Clause-Patent. The touch driver is GPL-2.0. See NOTICE for third-party components." />
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Thanks" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock TextWrapping="Wrap" Text="TianoCore EDK II, the Linux kernel and postmarketOS Exynos 9810 communities, TWRP, and tiny11builder for popularising offline image slimming." />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

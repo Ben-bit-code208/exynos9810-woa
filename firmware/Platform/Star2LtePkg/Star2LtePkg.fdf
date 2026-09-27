@@ -1,0 +1,239 @@
+## @file
+#  Flash description (FDF) for Star2LtePkg — defines the UEFI firmware volume
+#  that gets wrapped into an Android boot.img payload (see tools/bootimg-pack.sh).
+#
+#  SKELETON. Set FV base/size after the memory map is verified
+#  (docs/02-memory-map.md). The load address must match what sboot expects for
+#  the kernel Image slot.
+##
+
+[Defines]
+  # FD run address. A relocating stub (m1-hello start.S style) moves the FD from
+  # sboot's kernel load address up to 0x90000000 — clean RAM ABOVE the
+  # RKP-monitored kernel zones (0x80094000-0x828DBFFF). 0x80080000 bootloops;
+  # 0x90000000 is device-proven and matches PcdFdBaseAddress (DSC), LOAD_ADDR in
+  # m1-hello, and the edk2-exynos reference.
+  DEFINE FD_BASE_ADDRESS = 0x0000000090000000
+  DEFINE FD_SIZE         = 0x0000000000700000    # 7 MB FV (matches edk2-exynos ref)
+
+[FD.STAR2LTE_UEFI]
+  BaseAddress   = $(FD_BASE_ADDRESS)
+  Size          = $(FD_SIZE)
+  ErasePolarity = 1
+  BlockSize     = 0x1000
+  NumBlocks     = 0x700
+
+  0x00000000|0x00700000
+  FV = FVMAIN_COMPACT
+
+################################################################################
+#
+# FVMAIN_COMPACT — what sboot actually loads. Contains the SEC/PEI (PrePi) entry
+# plus a LZMA-compressed copy of FVMAIN (all the DXE modules). PrePi decompresses
+# FVMAIN into RAM and launches the DXE core. This is the standard phone-port
+# layout (smaller flash payload, position-independent DXE).
+#
+################################################################################
+[FV.FVMAIN_COMPACT]
+  FvAlignment        = 16
+  BlockSize          = 0x1000      # must match the FD's BlockSize (it lives in the FD)
+  NumBlocks          = 0           # auto-size to contents
+  ERASE_POLARITY     = 1
+  MEMORY_MAPPED      = TRUE
+  STICKY_WRITE       = TRUE
+  LOCK_CAP           = TRUE
+  LOCK_STATUS        = TRUE
+  WRITE_DISABLED_CAP = TRUE
+  WRITE_ENABLED_CAP  = TRUE
+  # READ_* attributes are MANDATORY: without READ_STATUS=TRUE the FV header's
+  # Attributes has EFI_FVB2_READ_STATUS clear, so DxeCore's FwVolBlockReadBlock
+  # returns EFI_ACCESS_DENIED -> GetFwVolHeader fails -> no FV2 protocol -> the
+  # dispatcher finds NO drivers (device-confirmed: NotifyFwVolBlock '(' ')' 'r'
+  # '!'). These were missing and silently broke ALL driver dispatch.
+  READ_LOCK_CAP      = TRUE
+  READ_LOCK_STATUS   = TRUE
+  READ_ENABLED_CAP   = TRUE
+  READ_STATUS        = TRUE
+
+  #
+  # SEC / PEI (combined PeilessSec — replaces the removed ArmPlatformPkg/PrePi).
+  # This is the firmware entry point sboot jumps to (wrapped as the kernel Image
+  # by tools/bootimg-pack.sh; a relocating stub moves it to 0x90000000).
+  #
+  INF ArmPlatformPkg/PeilessSec/PeilessSec.inf
+
+  #
+  # The DXE firmware volume, LZMA-compressed inside a GUIDed section.
+  #
+  FILE FV_IMAGE = 9E21FD93-9C72-4c15-8C4B-E77F1DB2D792 {
+    SECTION GUIDED EE4E5898-3914-4259-9D6E-DC7BD79403CF PROCESSING_REQUIRED = TRUE {
+      SECTION FV_IMAGE = FVMAIN
+    }
+  }
+
+################################################################################
+#
+# FVMAIN — the DXE phase. Decompressed and executed by PrePi.
+#
+################################################################################
+[FV.FVMAIN]
+  FvAlignment        = 16
+  BlockSize          = 0x1000
+  NumBlocks          = 0x400       # fixed 4 MB (auto-size NumBlocks=0 crashed GenFv)
+  ERASE_POLARITY     = 1
+  MEMORY_MAPPED      = TRUE
+  STICKY_WRITE       = TRUE
+  LOCK_CAP           = TRUE
+  LOCK_STATUS        = TRUE
+  WRITE_DISABLED_CAP = TRUE
+  WRITE_ENABLED_CAP  = TRUE
+  # READ_* mandatory (see FVMAIN_COMPACT note) — without READ_STATUS the DXE
+  # core cannot read this FV's header, so none of its drivers ever dispatch.
+  READ_LOCK_CAP      = TRUE
+  READ_LOCK_STATUS   = TRUE
+  READ_ENABLED_CAP   = TRUE
+  READ_STATUS        = TRUE
+
+  #
+  # --- DXE core + PCD ---
+  #
+  INF MdeModulePkg/Core/Dxe/DxeMain.inf
+  INF MdeModulePkg/Universal/PCD/Dxe/Pcd.inf
+
+  #
+  # --- Architectural protocols (CPU, GIC, timer, reset, runtime) ---
+  #
+  INF ArmPkg/Drivers/CpuDxe/CpuDxe.inf
+  INF ArmPkg/Drivers/ArmGicDxe/ArmGicDxe.inf
+  INF ArmPkg/Drivers/TimerDxe/TimerDxe.inf
+  INF MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf
+  INF MdeModulePkg/Universal/SecurityStubDxe/SecurityStubDxe.inf
+  INF MdeModulePkg/Universal/Metronome/Metronome.inf
+  INF MdeModulePkg/Universal/ResetSystemRuntimeDxe/ResetSystemRuntimeDxe.inf
+  INF EmbeddedPkg/RealTimeClockRuntimeDxe/RealTimeClockRuntimeDxe.inf
+  # Required arch protocols the DXE core waits for before BDS (else
+  # CoreAllEfiServicesAvailable asserts — device-confirmed hang after '8').
+  INF MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
+  INF MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
+  INF MdeModulePkg/Universal/MonotonicCounterRuntimeDxe/MonotonicCounterRuntimeDxe.inf
+
+  #
+  # --- UEFI variable services (memory-backed for bring-up; see docs/08) ---
+  #
+  INF MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf
+
+  #
+  # --- Console: framebuffer (first light) + serial + splitter ---
+  #
+  # HII database FIRST: BdsDxe links UefiHiiServicesLib which injects a DEPEX on
+  # gEfiHiiDatabaseProtocolGuid AND gEfiHiiStringProtocolGuid AND
+  # gEfiHiiConfigRoutingProtocolGuid (verified by decoding BdsDxe.depex). Without
+  # HiiDatabaseDxe producing them, BdsDxe NEVER dispatches -> the Bds arch
+  # protocol is never installed -> DXE core asserts before BDS handoff
+  # (device-confirmed: 24 drivers discovered, BdsDxe among the not-started, only
+  # 'M04'=Bds missing). GraphicsConsole/Setup also use HII.
+  #
+  INF MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
+  INF Platform/Star2LtePkg/Drivers/SimpleFramebufferDxe/SimpleFramebufferDxe.inf
+  INF MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
+  INF MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
+  INF MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
+  INF MdeModulePkg/Universal/SerialDxe/SerialDxe.inf
+
+  #
+  # --- ACPI: table installer (FADT/MADT/GTDT + DSDT) ---
+  #
+  INF MdeModulePkg/Universal/Acpi/AcpiTableDxe/AcpiTableDxe.inf
+  INF Platform/Star2LtePkg/Drivers/Star2LteAcpiPlatformDxe/Star2LteAcpiPlatformDxe.inf
+  INF RuleOverride = ACPITABLE Platform/Star2LtePkg/AcpiTables/AcpiTables.inf
+
+  #
+  # --- RAM discovery + storage + filesystem stack (so Windows sees the
+  #     high DRAM banks and the UFS ESP enumerates) ---
+  #
+  INF Platform/Star2LtePkg/Drivers/Star2LteRamManagerDxe/Star2LteRamManagerDxe.inf
+  INF Platform/Star2LtePkg/Drivers/Star2LteUfsHcDxe/Star2LteUfsHcDxe.inf
+  INF MdeModulePkg/Bus/Ufs/UfsPassThruDxe/UfsPassThruDxe.inf
+  INF MdeModulePkg/Bus/Scsi/ScsiBusDxe/ScsiBusDxe.inf
+  INF MdeModulePkg/Bus/Scsi/ScsiDiskDxe/ScsiDiskDxe.inf
+  INF MdeModulePkg/Universal/Disk/DiskIoDxe/DiskIoDxe.inf
+  INF MdeModulePkg/Universal/Disk/PartitionDxe/PartitionDxe.inf
+  # EnglishDxe = gEfiUnicodeCollation2Protocol provider; EnhancedFatDxe needs it
+  # to start (without it Fat mounts nothing -> no ESP -> bootmgfw not found).
+  INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
+  INF FatPkg/EnhancedFatDxe/Fat.inf
+  # TODO: USB stack for HID/keyboard + install media:
+  # INF MdeModulePkg/Bus/Pci/XhciDxe/XhciDxe.inf
+  # INF MdeModulePkg/Bus/Usb/UsbBusDxe/UsbBusDxe.inf
+  # INF MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf
+  # INF MdeModulePkg/Bus/Usb/UsbMassStorageDxe/UsbMassStorageDxe.inf
+
+  #
+  # --- BDS: finds and launches the Windows Boot Manager ---
+  #
+  INF MdeModulePkg/Universal/BdsDxe/BdsDxe.inf
+  # Optional, deferred until the Shell/UiApp library tail is wired (not required
+  # to launch bootmgfw.efi):
+  # INF MdeModulePkg/Application/UiApp/UiApp.inf
+  # INF ShellPkg/Application/Shell/Shell.inf
+
+################################################################################
+#
+# FFS packaging rules — how each module type is wrapped into the FV.
+# (edk2 master no longer supplies implicit defaults once any [Rule] is present.)
+#
+################################################################################
+[Rule.Common.SEC]
+  FILE SEC = $(NAMED_GUID) RELOCS_STRIPPED FIXED {
+    # Align = Auto is REQUIRED for XIP AArch64 TE images: it makes GenFfs place
+    # the TE image so that (placement - StrippedSize) stays 4KB-aligned, which is
+    # what keeps `adrp`/`ldr` global accesses correct after TE-header stripping.
+    # Without it, .data globals (e.g. mSystemMemoryEnd) read 0 -> SEC stack=0x1 ->
+    # CEntryPoint prologue faults. (Earlier removed to dodge the broken amd64
+    # GenFfs -n0 crash; the x86-rebuilt GenFfs handles it fine now.)
+    TE  TE Align = Auto                 $(INF_OUTPUT)/$(MODULE_NAME).efi
+  }
+
+[Rule.Common.DXE_CORE]
+  FILE DXE_CORE = $(NAMED_GUID) {
+    PE32     PE32                       $(INF_OUTPUT)/$(MODULE_NAME).efi
+    UI       STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.DXE_DRIVER]
+  FILE DRIVER = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX              Optional $(INF_OUTPUT)/$(MODULE_NAME).depex
+    PE32         PE32                   $(INF_OUTPUT)/$(MODULE_NAME).efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.DXE_RUNTIME_DRIVER]
+  FILE DRIVER = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX              Optional $(INF_OUTPUT)/$(MODULE_NAME).depex
+    PE32         PE32                   $(INF_OUTPUT)/$(MODULE_NAME).efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.UEFI_DRIVER]
+  FILE DRIVER = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX              Optional $(INF_OUTPUT)/$(MODULE_NAME).depex
+    PE32         PE32                   $(INF_OUTPUT)/$(MODULE_NAME).efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.UEFI_APPLICATION]
+  FILE APPLICATION = $(NAMED_GUID) {
+    UI       STRING="$(MODULE_NAME)" Optional
+    PE32     PE32                       $(INF_OUTPUT)/$(MODULE_NAME).efi
+  }
+
+################################################################################
+#
+# FFS rule for static ACPI tables (.aslc/.asl -> .acpi section).
+#
+################################################################################
+[Rule.Common.USER_DEFINED.ACPITABLE]
+  FILE FREEFORM = $(NAMED_GUID) {
+    RAW ACPI  Optional |.acpi
+    RAW ASL   Optional |.aml
+  }

@@ -1,0 +1,516 @@
+{
+ "files": {
+  "drivers/Exynos9810Ufs/Exynos9810Ufs.c": {
+   "entry": "driver-ufs-src",
+   "published_sha256": "8c2adefe9a9beeccd3234750a37a971aca739b33b92cbcf876715e2c9a58d9d4",
+   "ref": "WORKTREE",
+   "sha256": "8351b0d7d725e94ac2a2daa6385ac779751c0dbfd319611320c98ba68284fafc"
+  },
+  "drivers/Exynos9810Ufs/Exynos9810Ufs.h": {
+   "entry": "driver-ufs-src",
+   "published_sha256": "553432b2adc3ca096939f7f413368d6d4dc573149b9a481b190ed20bc5b2a562",
+   "ref": "WORKTREE",
+   "sha256": "026c059e37c0e77693321a5bf83fc9942dbc7a17af4c1bfe4eeb42ca49dcea50"
+  },
+  "drivers/Exynos9810Ufs/Exynos9810Ufs.inf": {
+   "entry": "driver-ufs-project",
+   "published_sha256": "135af2962fb8379be7704912b4a8749b1da592c346544d7f3abd2599de3fe7ad",
+   "ref": "WORKTREE",
+   "sha256": "135af2962fb8379be7704912b4a8749b1da592c346544d7f3abd2599de3fe7ad"
+  },
+  "drivers/Exynos9810Ufs/Exynos9810Ufs.vcxproj": {
+   "entry": "driver-ufs-project",
+   "published_sha256": "2cbf827fac7533efa44559ad3bfc077a2d9004579f540e446fe043e692eaaad6",
+   "ref": "WORKTREE",
+   "sha256": "2cbf827fac7533efa44559ad3bfc077a2d9004579f540e446fe043e692eaaad6"
+  },
+  "drivers/Exynos9810Ufs/Exynos9810UfsDiag.h": {
+   "entry": "driver-ufs-src",
+   "published_sha256": "55d9b1a6ba7f70688e1735cb004aa2837fb8338ed21202b3f11df2035e0047ca",
+   "ref": "WORKTREE",
+   "sha256": "202cc234f25225abeb1b0bb4a3916216ebb28c88beb00e11c53465fec3e6bef7"
+  },
+  "drivers/Exynos9810Ufs/UfsDiag.c": {
+   "entry": "driver-ufs-src",
+   "published_sha256": "e7854d8c1f41d1a7544628005e58fc559ba3ef5998ba2a39cc117c3c56f282d6",
+   "ref": "WORKTREE",
+   "sha256": "e7854d8c1f41d1a7544628005e58fc559ba3ef5998ba2a39cc117c3c56f282d6"
+  },
+  "drivers/Exynos9810Ufs/UfsDiag.vcxproj": {
+   "entry": "driver-ufs-project",
+   "published_sha256": "3b5d1daedfe4cc7bf1f9aa273e079932089cb5a2b86d10f06f5c46d221df807f",
+   "ref": "WORKTREE",
+   "sha256": "3b5d1daedfe4cc7bf1f9aa273e079932089cb5a2b86d10f06f5c46d221df807f"
+  },
+  "drivers/Exynos9810Ufs/build-ufs.ps1": {
+   "entry": "driver-ufs-build",
+   "published_sha256": "9bc6a0cceb68f0515ecffb2a670836d6cb2b34b3ed44dbf4e504f3e52f57c326",
+   "ref": "WORKTREE",
+   "sha256": "0aaeddcef99411a736d89028f12c424f63bf64c8d4fa5c0fb7959482ef1e2023"
+  },
+  "drivers/S6SY761Touch/Build-Touch.ps1": {
+   "entry": "driver-touch",
+   "published_sha256": "b0182c9d7ae124bcefde8a5b583a4230a25eddb23ae688b55719dc1f49c253d0",
+   "ref": "HEAD",
+   "sha256": "b0182c9d7ae124bcefde8a5b583a4230a25eddb23ae688b55719dc1f49c253d0"
+  },
+  "drivers/S6SY761Touch/Device.c": {
+   "entry": "driver-touch",
+   "published_sha256": "2c618bb061125dd52bcad2fdaf252197748dd08a46a81eddef29c5f406e58fb5",
+   "ref": "HEAD",
+   "sha256": "2c618bb061125dd52bcad2fdaf252197748dd08a46a81eddef29c5f406e58fb5"
+  },
+  "drivers/S6SY761Touch/Device.h": {
+   "entry": "driver-touch",
+   "published_sha256": "4eb5f5fe10df97193290b92e3a357314320ccc38b884d5f57e04ccf00df5e8ae",
+   "ref": "HEAD",
+   "sha256": "4eb5f5fe10df97193290b92e3a357314320ccc38b884d5f57e04ccf00df5e8ae"
+  },
+  "drivers/S6SY761Touch/README.md": {
+   "entry": "driver-touch",
+   "published_sha256": "534469193c9fa4ef76b0b3d8cbb2af9aa86b9eab980808602bac25e37cc4b290",
+   "ref": "HEAD",
+   "sha256": "8807b87cd9b505129bb694df4f718a8adf1107919460d24e7c021acc0fbd627e"
+  },
+  "drivers/S6SY761Touch/S6SY761Touch.inf": {
+   "entry": "driver-touch",
+   "published_sha256": "7b619e59c16f8334d44ff2d58cacda3ef337e8bd717eb0feb2d7a47d86299e36",
+   "ref": "HEAD",
+   "sha256": "7b619e59c16f8334d44ff2d58cacda3ef337e8bd717eb0feb2d7a47d86299e36"
+  },
+  "drivers/S6SY761Touch/S6SY761Touch.vcxproj": {
+   "entry": "driver-touch",
+   "published_sha256": "5dae5a75ab234239cda568972973313f409f490808a23d2b7e99cab31d1f4a09",
+   "ref": "HEAD",
+   "sha256": "5dae5a75ab234239cda568972973313f409f490808a23d2b7e99cab31d1f4a09"
+  },
+  "drivers/S6SY761Touch/TouchDriverUpdate.h": {
+   "entry": "driver-touch",
+   "published_sha256": "78673a38560d176e4db290b5bfafda2dd3cf5c40cab49efc663b54699f611157",
+   "ref": "HEAD",
+   "sha256": "78673a38560d176e4db290b5bfafda2dd3cf5c40cab49efc663b54699f611157"
+  },
+  "drivers/S6SY761Touch/common.h": {
+   "entry": "driver-touch",
+   "published_sha256": "9b31a32564c7e224552a257fb05386da59001ec8f8aee5f5abf68d26883960cd",
+   "ref": "HEAD",
+   "sha256": "9b31a32564c7e224552a257fb05386da59001ec8f8aee5f5abf68d26883960cd"
+  },
+  "drivers/S6SY761Touch/tests/TouchGestureTests.c": {
+   "entry": "driver-touch",
+   "published_sha256": "76f11fb3a06ee5fd1ae5c4888cf278aafec9a0f90f47c6c256b76fc11c12c97e",
+   "ref": "HEAD",
+   "sha256": "76f11fb3a06ee5fd1ae5c4888cf278aafec9a0f90f47c6c256b76fc11c12c97e"
+  },
+  "drivers/S6SY761Touch/tests/TouchGestureTests.vcxproj": {
+   "entry": "driver-touch",
+   "published_sha256": "cc23136623213172b58e8c604927822258aa1dac0117859dd4df235c5043bd19",
+   "ref": "HEAD",
+   "sha256": "cc23136623213172b58e8c604927822258aa1dac0117859dd4df235c5043bd19"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/AcpiTables.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "4a89b645f815829ef305d8deec5fc26cd67638e3d855ca13ccae0bdc2c12f027",
+   "ref": "HEAD",
+   "sha256": "4a89b645f815829ef305d8deec5fc26cd67638e3d855ca13ccae0bdc2c12f027"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/Dsdt.asl": {
+   "entry": "firmware-platform",
+   "published_sha256": "8af77c3b01178e1225bb56b184bef0c5820f9801c667f64dc3cfda278f57ac5d",
+   "ref": "HEAD",
+   "sha256": "8af77c3b01178e1225bb56b184bef0c5820f9801c667f64dc3cfda278f57ac5d"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/Fadt.aslc": {
+   "entry": "firmware-platform",
+   "published_sha256": "e2dbfd0fd94b70b47e9c16e6280b8de9c427dfc765b7444035b50dc44ccc4470",
+   "ref": "HEAD",
+   "sha256": "e2dbfd0fd94b70b47e9c16e6280b8de9c427dfc765b7444035b50dc44ccc4470"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/GpioHandoffDevices.asl": {
+   "entry": "firmware-platform",
+   "published_sha256": "c2e680d7102565cb2450f7a0d65517f76e7870bbd11d6f01d2b8b0655542231a",
+   "ref": "HEAD",
+   "sha256": "c2e680d7102565cb2450f7a0d65517f76e7870bbd11d6f01d2b8b0655542231a"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/Gtdt.aslc": {
+   "entry": "firmware-platform",
+   "published_sha256": "d7f67bbbb1e96621368c75d65418dc85308b48820a38f5498812a6f684529609",
+   "ref": "HEAD",
+   "sha256": "d7f67bbbb1e96621368c75d65418dc85308b48820a38f5498812a6f684529609"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/Hsi40Devices.asl": {
+   "entry": "firmware-platform",
+   "published_sha256": "cb82d035d0ffb8ad06b8d073e2db427839fbe18eaf7815262b6cc521f02c66a4",
+   "ref": "HEAD",
+   "sha256": "cb82d035d0ffb8ad06b8d073e2db427839fbe18eaf7815262b6cc521f02c66a4"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/Madt.aslc": {
+   "entry": "firmware-platform",
+   "published_sha256": "120e886a97dafbf11146474e6afd52e67762be713bdab5de923d7b62490c7542",
+   "ref": "HEAD",
+   "sha256": "120e886a97dafbf11146474e6afd52e67762be713bdab5de923d7b62490c7542"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/Pptt.aslc": {
+   "entry": "firmware-platform",
+   "published_sha256": "e0add8ec6ab5818b3186a6000d96de6a55492491b2dece0c42ef9afe563d3a09",
+   "ref": "HEAD",
+   "sha256": "e0add8ec6ab5818b3186a6000d96de6a55492491b2dece0c42ef9afe563d3a09"
+  },
+  "firmware/Platform/Star2LtePkg/AcpiTables/Star2LteAcpiHeader.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "d76e671fccff25e97b515738476d7fbdceadff25086fa378330296ca7a94f491",
+   "ref": "HEAD",
+   "sha256": "d76e671fccff25e97b515738476d7fbdceadff25086fa378330296ca7a94f491"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/SimpleFramebufferDxe/SimpleFramebufferDxe.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "64d75fc004b06d0005bee2d3f3e9fdcc873687711fa32ae018133b0f9c83beaa",
+   "ref": "HEAD",
+   "sha256": "64d75fc004b06d0005bee2d3f3e9fdcc873687711fa32ae018133b0f9c83beaa"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/SimpleFramebufferDxe/SimpleFramebufferDxe.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "bc20dbb27080ed6c217efc8c90441abb7bc5202e14f8fde61f54ce42fbe237f4",
+   "ref": "HEAD",
+   "sha256": "bc20dbb27080ed6c217efc8c90441abb7bc5202e14f8fde61f54ce42fbe237f4"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteAcpiPlatformDxe/Star2LteAcpiPlatformDxe.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "d33fc65d3daf657fbe0115d2becdece7d1976f5bfb8f0cc3051fe2753b4a1e19",
+   "ref": "HEAD",
+   "sha256": "d33fc65d3daf657fbe0115d2becdece7d1976f5bfb8f0cc3051fe2753b4a1e19"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteAcpiPlatformDxe/Star2LteAcpiPlatformDxe.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "454901e526df2a2017f1e0413e27b2153967f73661bb1913f6ea353baddef5a4",
+   "ref": "HEAD",
+   "sha256": "454901e526df2a2017f1e0413e27b2153967f73661bb1913f6ea353baddef5a4"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteGpioHandoffDxe/GpioHandoffCore.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "bf8f51cdb89687dc0c52480990d75e417bed7f678ea649c48be55a1a827c7382",
+   "ref": "HEAD",
+   "sha256": "bf8f51cdb89687dc0c52480990d75e417bed7f678ea649c48be55a1a827c7382"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteGpioHandoffDxe/GpioHandoffCore.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "e9b1a9a8f38f1e62c068d21c6f01177dc380c147e15492d8163fcfb3ea7f1d96",
+   "ref": "HEAD",
+   "sha256": "e9b1a9a8f38f1e62c068d21c6f01177dc380c147e15492d8163fcfb3ea7f1d96"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteGpioHandoffDxe/GpioHandoffDxe.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "eb943d4c04e65ab27dc3da71b1c8baaa9178af2a4a2afdfdadfd4df28733c302",
+   "ref": "HEAD",
+   "sha256": "eb943d4c04e65ab27dc3da71b1c8baaa9178af2a4a2afdfdadfd4df28733c302"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteGpioHandoffDxe/GpioHandoffProfile.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "048db11c0b62ae2b4acbe5bab3a91cf411564dd5b4ca60efce52474120bc074e",
+   "ref": "HEAD",
+   "sha256": "048db11c0b62ae2b4acbe5bab3a91cf411564dd5b4ca60efce52474120bc074e"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteGpioHandoffDxe/Star2LteGpioHandoffDxe.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "8799ef1949e7ea219648d88e000cf0178a9cd1a388db0d13f573172faae5b6ec",
+   "ref": "HEAD",
+   "sha256": "8799ef1949e7ea219648d88e000cf0178a9cd1a388db0d13f573172faae5b6ec"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteGpioHandoffDxe/Usb2AccessProfile.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "77a419ecffbc1329e71495f2f7eff1eba005486a057f888007dd27af4c064c4a",
+   "ref": "HEAD",
+   "sha256": "77a419ecffbc1329e71495f2f7eff1eba005486a057f888007dd27af4c064c4a"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40Census.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "e5cb5d9ff56c47ab94dff19479bdcf4834e2f8aa86e3561e7f12cd9cdea9ff79",
+   "ref": "HEAD",
+   "sha256": "e5cb5d9ff56c47ab94dff19479bdcf4834e2f8aa86e3561e7f12cd9cdea9ff79"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40Census.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "9ab22b89ddf577a512db38f9d9a8a79f35c62eb252867369bb262892b733207a",
+   "ref": "HEAD",
+   "sha256": "9ab22b89ddf577a512db38f9d9a8a79f35c62eb252867369bb262892b733207a"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40CensusBackend.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "67acf233cc0f99d5acbc0c8b5ff28942673b3959b8d952f4c0cac855b6248261",
+   "ref": "HEAD",
+   "sha256": "67acf233cc0f99d5acbc0c8b5ff28942673b3959b8d952f4c0cac855b6248261"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40CensusBackend.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "de31b5ecf9e15a6631fa58a8d1c5293a1e855aaa531b7e36c6bc1e4d3b138deb",
+   "ref": "HEAD",
+   "sha256": "de31b5ecf9e15a6631fa58a8d1c5293a1e855aaa531b7e36c6bc1e4d3b138deb"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40ColdInit.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "66a9aa97078bc7b9058e15ee75a3b069546c8efa97eb0f336cdd8805787547d3",
+   "ref": "HEAD",
+   "sha256": "66a9aa97078bc7b9058e15ee75a3b069546c8efa97eb0f336cdd8805787547d3"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40ColdInit.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "653e8757287aef454cf816e677c0c09334645d56b798d69877485547dc1bc106",
+   "ref": "HEAD",
+   "sha256": "653e8757287aef454cf816e677c0c09334645d56b798d69877485547dc1bc106"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40ColdTrial.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "b7b78efd19ba4c1184bbee4ff4331b6fe3e2a5c0683feaa2560e15be884c3544",
+   "ref": "HEAD",
+   "sha256": "b7b78efd19ba4c1184bbee4ff4331b6fe3e2a5c0683feaa2560e15be884c3544"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40ColdTrial.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "85813b27bb5b045559c48ea53b05589789d5493826564de2fb08bf9952a0e5cf",
+   "ref": "HEAD",
+   "sha256": "85813b27bb5b045559c48ea53b05589789d5493826564de2fb08bf9952a0e5cf"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40HandoffBackend.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "0e2b4181c1665a0d5a9d55fb91794501c0c4ad4a935678a32f38594be25e9955",
+   "ref": "HEAD",
+   "sha256": "0e2b4181c1665a0d5a9d55fb91794501c0c4ad4a935678a32f38594be25e9955"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40HandoffBackend.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "17fd8b0d9fd738221b6b54fc43b260b0be7e053a494bda721fb54e821151469c",
+   "ref": "HEAD",
+   "sha256": "17fd8b0d9fd738221b6b54fc43b260b0be7e053a494bda721fb54e821151469c"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40HandoffCore.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "89b9abc979010846d974343c82fef50822b799ee8272db2530d9944afb291e0d",
+   "ref": "HEAD",
+   "sha256": "89b9abc979010846d974343c82fef50822b799ee8272db2530d9944afb291e0d"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40HandoffCore.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "ceb725983d82cedc7e13444e0cdf1b7665054a1d863fbc9e5c01dd4836e3fb7f",
+   "ref": "HEAD",
+   "sha256": "ceb725983d82cedc7e13444e0cdf1b7665054a1d863fbc9e5c01dd4836e3fb7f"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40ResetTrial.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "57b72766d2333f82cdc5cc83ffc0a291170ef93f77f4b9bb27e3ddfad4664420",
+   "ref": "HEAD",
+   "sha256": "57b72766d2333f82cdc5cc83ffc0a291170ef93f77f4b9bb27e3ddfad4664420"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40Win11Authority.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "6701792a1930d9cf6ed0192f608545a41b8aa799978be745715f73b8824bace6",
+   "ref": "HEAD",
+   "sha256": "6701792a1930d9cf6ed0192f608545a41b8aa799978be745715f73b8824bace6"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40Win11Authority.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "feab15ba1e1ee5668253f9d82fc7a072a52df3081b8cf406e700ba3bdd9c9e3e",
+   "ref": "HEAD",
+   "sha256": "feab15ba1e1ee5668253f9d82fc7a072a52df3081b8cf406e700ba3bdd9c9e3e"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40Win11Backend.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "e9e2d75af41baa0be3818db20129e3646e8321284b661e5220b5812088b41a41",
+   "ref": "HEAD",
+   "sha256": "e9e2d75af41baa0be3818db20129e3646e8321284b661e5220b5812088b41a41"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteHsi40HandoffDxe/Hsi40Win11Runtime.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "e128b515d04aff73e2c270f51c50d0b3ec99b7dc2accb41426cdc5607209f28f",
+   "ref": "HEAD",
+   "sha256": "e128b515d04aff73e2c270f51c50d0b3ec99b7dc2accb41426cdc5607209f28f"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteRamManagerDxe/Star2LteRamManagerDxe.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "789eacee5b0e9160e34d67f2003e51926fc63a691435e6b4695500b5447cf25e",
+   "ref": "HEAD",
+   "sha256": "789eacee5b0e9160e34d67f2003e51926fc63a691435e6b4695500b5447cf25e"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteRamManagerDxe/Star2LteRamManagerDxe.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "c4a09b370e42851c758e8f8a05dfa191b59da67706c8c3b64fe3b69516c9dc3a",
+   "ref": "HEAD",
+   "sha256": "c4a09b370e42851c758e8f8a05dfa191b59da67706c8c3b64fe3b69516c9dc3a"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteUart1HandoffDxe/Uart1Census.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "13013b980d0dcc756b1f5366277da09ce061fcf4b233af6b5f478648ab6ce101",
+   "ref": "HEAD",
+   "sha256": "13013b980d0dcc756b1f5366277da09ce061fcf4b233af6b5f478648ab6ce101"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteUart1HandoffDxe/Uart1Census.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "9318ab8f8b37fefeacd7720ed8c226b0c08ddccde8ebdad5c78262e5bd0bb01e",
+   "ref": "HEAD",
+   "sha256": "9318ab8f8b37fefeacd7720ed8c226b0c08ddccde8ebdad5c78262e5bd0bb01e"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteUart1HandoffDxe/Uart1CensusBackend.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "813985f8480d40d556805cc0b6a9d227849f1ec4a8be5f68b5bec344698aeb5d",
+   "ref": "HEAD",
+   "sha256": "813985f8480d40d556805cc0b6a9d227849f1ec4a8be5f68b5bec344698aeb5d"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteUart1HandoffDxe/Uart1CensusBackend.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "885b5f26d46c1ff1a26a8ea348688937c20068920e8360502e5064130d6a7491",
+   "ref": "HEAD",
+   "sha256": "885b5f26d46c1ff1a26a8ea348688937c20068920e8360502e5064130d6a7491"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteUfsHcDxe/Star2LteUfsHcDxe.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "4b76a1614cfce9412ec1234572750a48bb06d6d7e5f09a1884dfaeac3daa78aa",
+   "ref": "HEAD",
+   "sha256": "4b76a1614cfce9412ec1234572750a48bb06d6d7e5f09a1884dfaeac3daa78aa"
+  },
+  "firmware/Platform/Star2LtePkg/Drivers/Star2LteUfsHcDxe/Star2LteUfsHcDxe.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "a04ccb7db6c255b729a122b8821fa5e2a6e1cc93ff23c46816955cf76fa0febb",
+   "ref": "HEAD",
+   "sha256": "a04ccb7db6c255b729a122b8821fa5e2a6e1cc93ff23c46816955cf76fa0febb"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformBootManagerLib/MuCntfrqKep.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "2b088571f89925fff71bdb8d42fc2efad5cd84846e460c57ff1911309c4ed807",
+   "ref": "HEAD",
+   "sha256": "2b088571f89925fff71bdb8d42fc2efad5cd84846e460c57ff1911309c4ed807"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformBootManagerLib/MuCntfrqKep.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "5541f26e7d272da3f589cd7aed900abf11717de39fa7c807f7d0a696f9953eb6",
+   "ref": "HEAD",
+   "sha256": "5541f26e7d272da3f589cd7aed900abf11717de39fa7c807f7d0a696f9953eb6"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "7e8a11582f1b225e33beac2987adac4ebe392bfe10068098b6509fa3afeb3df5",
+   "ref": "HEAD",
+   "sha256": "9852b0aeb0841784ab7947c54fb57c0f5b767c8e58bd45410f392fe1e851954f"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformBootManagerLib/PlatformBootManagerLib.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "0b13656cb759f49cac0fa92ae1ee34d31eb380f19272eeb2975bc55e899e78ce",
+   "ref": "HEAD",
+   "sha256": "0b13656cb759f49cac0fa92ae1ee34d31eb380f19272eeb2975bc55e899e78ce"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformBootManagerLib/UsbDebug.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "b61fb72494ec5652f1e6e11aac3294e58a82aa6f983809b8b6a03be026df0ab2",
+   "ref": "HEAD",
+   "sha256": "b61fb72494ec5652f1e6e11aac3294e58a82aa6f983809b8b6a03be026df0ab2"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformBootManagerLib/UsbDebug.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "8d7712ff7b0195e510a48bb2b426168a6aa7c1ae8613935098d84e3612bf446c",
+   "ref": "HEAD",
+   "sha256": "8d7712ff7b0195e510a48bb2b426168a6aa7c1ae8613935098d84e3612bf446c"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformBootManagerLib/UsbDebugHid.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "04e4f67b1a8ce26d73643b2be25653159a2fbe32e0226a4fc1327898332c7346",
+   "ref": "HEAD",
+   "sha256": "04e4f67b1a8ce26d73643b2be25653159a2fbe32e0226a4fc1327898332c7346"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformMemoryMapLib/ArmPlatformLib.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "683d1a4d403eec013ec6dbc9c00f7c646a13c20ced182b3e695a3b570a340a5e",
+   "ref": "HEAD",
+   "sha256": "683d1a4d403eec013ec6dbc9c00f7c646a13c20ced182b3e695a3b570a340a5e"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformMemoryMapLib/PlatformMemoryMapLib.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "e6bbb5922bcbf97d912ecdc8f7bcca6461000214711d460cab79d69787eae807",
+   "ref": "HEAD",
+   "sha256": "e6bbb5922bcbf97d912ecdc8f7bcca6461000214711d460cab79d69787eae807"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformMemoryMapLib/PlatformMemoryMapLib.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "7b1401cdfa1ac7ed80e5bbe6f6cd9cc891755e1d9b969553053ef9f4f3f5e978",
+   "ref": "HEAD",
+   "sha256": "7b1401cdfa1ac7ed80e5bbe6f6cd9cc891755e1d9b969553053ef9f4f3f5e978"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformMemoryMapLib/Star2LteFbText.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "6008acb0c629c38673ce11373279c947309c74c87e2fc6aa0ae4dc4121abc055",
+   "ref": "HEAD",
+   "sha256": "6008acb0c629c38673ce11373279c947309c74c87e2fc6aa0ae4dc4121abc055"
+  },
+  "firmware/Platform/Star2LtePkg/Library/PlatformMemoryMapLib/Star2LteFbText.h": {
+   "entry": "firmware-platform",
+   "published_sha256": "70a0125133c98318cdd917ff090872a4ccaa5e1fa108c64e37d7b394325c217b",
+   "ref": "HEAD",
+   "sha256": "70a0125133c98318cdd917ff090872a4ccaa5e1fa108c64e37d7b394325c217b"
+  },
+  "firmware/Platform/Star2LtePkg/Library/Star2LteResetSystemLib/Star2LteResetSystemLib.c": {
+   "entry": "firmware-platform",
+   "published_sha256": "4a0d80ca2255edffbdb6309524b0b78b853f4512cdd110fa6005aa137180f31e",
+   "ref": "HEAD",
+   "sha256": "4a0d80ca2255edffbdb6309524b0b78b853f4512cdd110fa6005aa137180f31e"
+  },
+  "firmware/Platform/Star2LtePkg/Library/Star2LteResetSystemLib/Star2LteResetSystemLib.inf": {
+   "entry": "firmware-platform",
+   "published_sha256": "2221d6bf2b4f75d94bcaf74fa9fbe616f07a3a08c200987f1f03c5c7327b1e38",
+   "ref": "HEAD",
+   "sha256": "2221d6bf2b4f75d94bcaf74fa9fbe616f07a3a08c200987f1f03c5c7327b1e38"
+  },
+  "firmware/Platform/Star2LtePkg/Star2LtePkg.dsc": {
+   "entry": "firmware-platform",
+   "published_sha256": "3ae78c8c93195e2a007c67ee8029e7dc40401d590e950b0044f0c6209f1eeb83",
+   "ref": "HEAD",
+   "sha256": "3ae78c8c93195e2a007c67ee8029e7dc40401d590e950b0044f0c6209f1eeb83"
+  },
+  "firmware/Platform/Star2LtePkg/Star2LtePkg.fdf": {
+   "entry": "firmware-platform",
+   "published_sha256": "2929525434770ec52c3d763d0b1c83f92b468a85aeaf80b47fef59df462a0b76",
+   "ref": "HEAD",
+   "sha256": "2929525434770ec52c3d763d0b1c83f92b468a85aeaf80b47fef59df462a0b76"
+  },
+  "firmware/Silicon/Exynos9810Pkg/Exynos9810Pkg.dec": {
+   "entry": "firmware-silicon",
+   "published_sha256": "6456f0b5dc9124887723822d5b61342b6bad20d21fd93b6bd76fde649b7b255b",
+   "ref": "HEAD",
+   "sha256": "6456f0b5dc9124887723822d5b61342b6bad20d21fd93b6bd76fde649b7b255b"
+  },
+  "firmware/Silicon/Exynos9810Pkg/Include/Platform/Exynos9810.h": {
+   "entry": "firmware-silicon",
+   "published_sha256": "f0536e07969f68db5fba3a633980deb9770ca8d61159981674003f06513e3aa6",
+   "ref": "HEAD",
+   "sha256": "f0536e07969f68db5fba3a633980deb9770ca8d61159981674003f06513e3aa6"
+  },
+  "firmware/Silicon/Exynos9810Pkg/Library/Exynos9810SerialPortLib/Exynos9810SerialPortLib.c": {
+   "entry": "firmware-silicon",
+   "published_sha256": "7921b620df755f0de27545a2d825637ba1f7ac6ea94e78797fd2e185cb62045d",
+   "ref": "HEAD",
+   "sha256": "7921b620df755f0de27545a2d825637ba1f7ac6ea94e78797fd2e185cb62045d"
+  },
+  "firmware/Silicon/Exynos9810Pkg/Library/Exynos9810SerialPortLib/Exynos9810SerialPortLib.inf": {
+   "entry": "firmware-silicon",
+   "published_sha256": "00136aef14dec6fcd89cdb79f3bd76bad3948e5a564e5285ef096c82a21eb3a9",
+   "ref": "HEAD",
+   "sha256": "00136aef14dec6fcd89cdb79f3bd76bad3948e5a564e5285ef096c82a21eb3a9"
+  },
+  "firmware/tools/bootshim/bootshim.S": {
+   "entry": "firmware-bootshim",
+   "published_sha256": "ad02105ee3e28052f550e36a1e21b3bd82a21f45f6ba05a9b0619991da9459ed",
+   "ref": "HEAD",
+   "sha256": "ad02105ee3e28052f550e36a1e21b3bd82a21f45f6ba05a9b0619991da9459ed"
+  },
+  "firmware/tools/build-uefi.ps1": {
+   "entry": "firmware-build",
+   "published_sha256": "b4b8f3e9a6973116b853f826efbfd7ec6429c3bacb96e12ce44e10e988c918fb",
+   "ref": "HEAD",
+   "sha256": "b4b8f3e9a6973116b853f826efbfd7ec6429c3bacb96e12ce44e10e988c918fb"
+  },
+  "firmware/tools/pack-uefi.ps1": {
+   "entry": "firmware-pack",
+   "published_sha256": "23dbd46938c405598b05f5ebf377a6dadca760e101358344fd40ce7cc7af8ad1",
+   "ref": "HEAD",
+   "sha256": "23dbd46938c405598b05f5ebf377a6dadca760e101358344fd40ce7cc7af8ad1"
+  }
+ },
+ "source_commit": "9546069abd69f3aea842c9356a31bd4799fabd29",
+ "source_dirty": true
+}

@@ -1,0 +1,26 @@
+## @file
+#  Samsung/Exynos UART SerialPortLib for Exynos 9810 (SKELETON).
+##
+
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = Exynos9810SerialPortLib
+  FILE_GUID                      = 11111111-2222-3333-4444-555555555520
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 0.1
+  LIBRARY_CLASS                  = SerialPortLib
+
+[Sources]
+  Exynos9810SerialPortLib.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  Silicon/Exynos9810Pkg/Exynos9810Pkg.dec
+
+[LibraryClasses]
+  BaseLib
+  IoLib
+  PcdLib
+
+[FixedPcd]
+  gExynos9810TokenSpaceGuid.PcdSerialRegisterBase

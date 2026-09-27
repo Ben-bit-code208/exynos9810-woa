@@ -1,0 +1,89 @@
+{
+  "comment": "Curated allowlist of product sources imported from the private research repository. Paths under 'from' are relative to the research repo root; 'include'/'exclude' globs are relative to 'from'. Nothing outside this file is ever published.",
+  "global_exclude": [
+    "*.log",
+    "*.bak",
+    "*.orig",
+    "*receipt*.json",
+    "*.provenance.json"
+  ],
+  "entries": [
+    {
+      "id": "firmware-platform",
+      "from": "isolated/homegrown-ext209-source/Platform/Star2LtePkg",
+      "to": "firmware/Platform/Star2LtePkg",
+      "license": "BSD-2-Clause-Patent",
+      "resolve_macros": {
+        "STAR2LTE_INSTALL_KE_TRACE": 0,
+        "STAR2LTE_INSTALL_KE_ENTRY_CAVE": 0,
+        "STAR2LTE_INSTALL_KE_FB_CAVE": 0,
+        "STAR2LTE_KERNEL_EPOCH_TRACE": 0,
+        "STAR2LTE_NTOS_PATCH_PROBE": 0,
+        "STAR2LTE_PSCI_HANDOFF_PROBE": 0
+      },
+      "resolve_literals": true
+    },
+    {
+      "id": "firmware-silicon",
+      "from": "isolated/homegrown-ext209-source/Silicon/Exynos9810Pkg",
+      "to": "firmware/Silicon/Exynos9810Pkg",
+      "license": "BSD-2-Clause-Patent"
+    },
+    {
+      "id": "firmware-bootshim",
+      "from": "isolated/homegrown-ext209-source/tools/bootshim",
+      "to": "firmware/tools/bootshim",
+      "license": "BSD-2-Clause-Patent"
+    },
+    {
+      "id": "firmware-build",
+      "from": "isolated/homegrown-ext209-source/tools/build-uefi.ps1",
+      "to": "firmware/tools/build-uefi.ps1",
+      "license": "BSD-2-Clause-Patent"
+    },
+    {
+      "id": "firmware-pack",
+      "from": "isolated/homegrown-ext209-source/tools/pack-uefi.ps1",
+      "to": "firmware/tools/pack-uefi.ps1",
+      "license": "BSD-2-Clause-Patent"
+    },
+    {
+      "id": "driver-ufs-src",
+      "from": "eight-core/harness/ufs-src",
+      "to": "drivers/Exynos9810Ufs",
+      "license": "BSD-2-Clause-Patent",
+      "ref": "WORKTREE",
+      "resolve_macros": {
+        "UFS_PORTABLE_KERNEL_CONTRACT": 1
+      }
+    },
+    {
+      "id": "driver-ufs-project",
+      "from": "eight-core/harness/ufs-v44-deployed-src",
+      "to": "drivers/Exynos9810Ufs",
+      "include": [
+        "*.inf",
+        "*.vcxproj"
+      ],
+      "license": "BSD-2-Clause-Patent",
+      "ref": "WORKTREE"
+    },
+    {
+      "id": "driver-ufs-build",
+      "from": "eight-core/harness/tools/build-ufs-exact.ps1",
+      "to": "drivers/Exynos9810Ufs/build-ufs.ps1",
+      "license": "BSD-2-Clause-Patent",
+      "ref": "WORKTREE"
+    },
+    {
+      "id": "driver-touch",
+      "from": "windows-drivers/S6SY761Touch",
+      "to": "drivers/S6SY761Touch",
+      "exclude": [
+        "LICENSE",
+        "Sign-Touch.ps1"
+      ],
+      "license": "GPL-2.0-only (subtree; see drivers/S6SY761Touch/LICENSE)"
+    }
+  ]
+}

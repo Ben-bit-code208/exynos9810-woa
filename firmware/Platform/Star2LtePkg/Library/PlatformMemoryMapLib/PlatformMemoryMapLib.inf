@@ -1,0 +1,37 @@
+## @file
+#  PlatformMemoryMapLib — Exynos 9810 / Galaxy S9+.
+#  Full ArmPlatformLib: memory map (PlatformMemoryMapLib.c) + boot-flow entry
+#  points (ArmPlatformLib.c).
+##
+
+[Defines]
+  INF_VERSION                    = 0x0001001B
+  BASE_NAME                      = PlatformMemoryMapLib
+  FILE_GUID                      = 11111111-2222-3333-4444-555555555530
+  MODULE_TYPE                    = BASE
+  VERSION_STRING                 = 0.1
+  LIBRARY_CLASS                  = ArmPlatformLib
+
+[Sources]
+  PlatformMemoryMapLib.c
+  ArmPlatformLib.c
+  Star2LteFbText.c
+
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  ArmPlatformPkg/ArmPlatformPkg.dec
+  Silicon/Exynos9810Pkg/Exynos9810Pkg.dec
+
+[LibraryClasses]
+  ArmLib
+  DebugLib
+  PcdLib
+
+[Ppis]
+  gArmMpCoreInfoPpiGuid           ## PRODUCES
+
+[FixedPcd]
+  gArmPlatformTokenSpaceGuid.PcdCoreCount
+  gArmPlatformTokenSpaceGuid.PcdClusterCount
+  gArmTokenSpaceGuid.PcdArmPrimaryCore

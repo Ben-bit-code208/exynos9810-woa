@@ -1,0 +1,92 @@
+/** @file
+  FADT — Fixed ACPI Description Table for Exynos 9810 / Galaxy S9+.
+
+  ARM is a "hardware-reduced" ACPI platform: there is no legacy ACPI PM block,
+  no SCI/SMI, no PM timer. Almost every field below is therefore 0. The two
+  fields that matter are:
+    - Flags        -> HW_REDUCED_ACPI (+ low-power S0 idle + reset register)
+    - ResetReg     -> Exynos PMU SWRESET, used because EL3 lacks PSCI SYSTEM_RESET
+    - ArmBootArch  -> PSCI_COMPLIANT (Windows still uses PSCI for CPU on/off)
+
+  The DSDT pointer (XDsdt) is filled in at install time by AcpiPlatformDxe, so
+  it is left 0 here.
+
+  *** Confirm the platform actually implements PSCI via the EL3 monitor before
+      trusting the PSCI flag (see docs/01-boot-chain.md). ***
+**/
+
+#include "Star2LteAcpiHeader.h"
+#include <IndustryStandard/Acpi63.h>
+
+#define STAR2LTE_PMU_SWRESET_ADDRESS  0x14060400ULL
+#define STAR2LTE_RESET_GAS \
+  { EFI_ACPI_6_3_SYSTEM_MEMORY, 32, 0, EFI_ACPI_6_3_DWORD, STAR2LTE_PMU_SWRESET_ADDRESS }
+
+EFI_ACPI_6_3_FIXED_ACPI_DESCRIPTION_TABLE  Fadt = {
+  ACPI_HEADER (
+    EFI_ACPI_6_3_FIXED_ACPI_DESCRIPTION_TABLE_SIGNATURE,
+    EFI_ACPI_6_3_FIXED_ACPI_DESCRIPTION_TABLE,
+    EFI_ACPI_6_3_FIXED_ACPI_DESCRIPTION_TABLE_REVISION
+    ),
+  0,                                              // FirmwareCtrl (use XFirmwareCtrl)
+  0,                                              // Dsdt (use XDsdt; set by installer)
+  EFI_ACPI_RESERVED_BYTE,                         // Reserved0
+  EFI_ACPI_6_3_PM_PROFILE_TABLET,                 // PreferredPmProfile (phone/tablet)
+  0,                                              // SciInt
+  0,                                              // SmiCmd
+  0,                                              // AcpiEnable
+  0,                                              // AcpiDisable
+  0,                                              // S4BiosReq
+  0,                                              // PstateCnt
+  0,                                              // Pm1aEvtBlk
+  0,                                              // Pm1bEvtBlk
+  0,                                              // Pm1aCntBlk
+  0,                                              // Pm1bCntBlk
+  0,                                              // Pm2CntBlk
+  0,                                              // PmTmrBlk
+  0,                                              // Gpe0Blk
+  0,                                              // Gpe1Blk
+  0,                                              // Pm1EvtLen
+  0,                                              // Pm1CntLen
+  0,                                              // Pm2CntLen
+  0,                                              // PmTmrLen
+  0,                                              // Gpe0BlkLen
+  0,                                              // Gpe1BlkLen
+  0,                                              // Gpe1Base
+  0,                                              // CstCnt
+  0,                                              // PLvl2Lat
+  0,                                              // PLvl3Lat
+  0,                                              // FlushSize
+  0,                                              // FlushStride
+  0,                                              // DutyOffset
+  0,                                              // DutyWidth
+  0,                                              // DayAlrm
+  0,                                              // MonAlrm
+  0,                                              // Century
+  0,                                              // IaPcBootArch (x86 only)
+  EFI_ACPI_RESERVED_BYTE,                         // Reserved1
+  // Flags: hardware-reduced ACPI, S0 low-power idle, and PMU reset supported.
+  EFI_ACPI_6_3_HW_REDUCED_ACPI |
+    EFI_ACPI_6_3_LOW_POWER_S0_IDLE_CAPABLE |
+    EFI_ACPI_6_3_RESET_REG_SUP,
+  STAR2LTE_RESET_GAS,                             // ResetReg: PMU SWRESET
+  1,                                              // ResetValue
+  // ArmBootArch: PSCI remains required for secondary-CPU lifecycle operations.
+  EFI_ACPI_6_3_ARM_PSCI_COMPLIANT,
+  EFI_ACPI_6_3_FIXED_ACPI_DESCRIPTION_TABLE_MINOR_REVISION,
+  0,                                              // XFirmwareCtrl
+  0,                                              // XDsdt (set by installer)
+  NULL_GAS,                                       // XPm1aEvtBlk
+  NULL_GAS,                                       // XPm1bEvtBlk
+  NULL_GAS,                                       // XPm1aCntBlk
+  NULL_GAS,                                       // XPm1bCntBlk
+  NULL_GAS,                                       // XPm2CntBlk
+  NULL_GAS,                                       // XPmTmrBlk
+  NULL_GAS,                                       // XGpe0Blk
+  NULL_GAS,                                       // XGpe1Blk
+  NULL_GAS,                                       // SleepControlReg (TODO: PSCI SYSTEM_OFF used instead)
+  NULL_GAS,                                       // SleepStatusReg
+  0,                                              // HypervisorVendorIdentity
+};
+
+VOID *CONST  ReferenceAcpiTable = &Fadt;

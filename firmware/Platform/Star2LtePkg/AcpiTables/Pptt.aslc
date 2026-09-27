@@ -1,0 +1,127 @@
+/** @file
+  PPTT — Processor Properties Topology Table for Exynos 9810 / Galaxy S9(+).
+
+  WHY THIS TABLE EXISTS (2026-08-02)
+  ----------------------------------
+  Windows reports a single processor even though the MADT enables all eight
+  GICCs and the boot-v9 on-screen PSCI panel proved the secure monitor starts
+  secondaries and they execute our code (CPU_ON ok=7/7, markers=3/7). That
+  retires "firmware cannot start cores" and moves the fault into Windows'
+  ingestion of the ACPI processor description.
+
+  The MADT alone tells Windows *that* eight GICCs exist; it does not describe
+  the processor topology. On ARM64 the topology comes from the PPTT, and this
+  platform had none — the AcpiTables directory shipped only DSDT/FADT/MADT/GTDT.
+  Without a PPTT the HAL has no package/cluster/core hierarchy to attach the
+  MADT's ACPI Processor UIDs to.
+
+  TOPOLOGY DESCRIBED (matches Madt.aslc exactly)
+  ---------------------------------------------
+    package
+      +- cluster 0 (Cortex-A55 LITTLE)  cores UID 0,1,2,3   MPIDR 0x000..0x003
+      +- cluster 1 (Mongoose-M3 big)    cores UID 4,5,6,7   MPIDR 0x100..0x103
+
+  The AcpiProcessorId of each leaf MUST equal the AcpiProcessorUid of the
+  corresponding MADT GICC structure, which is how the two tables are joined.
+  Madt.aslc assigns UID 0..7 in that same order, so leaf N <-> GICC N.
+
+  Neither cluster sets the "identical implementation" flag across the package,
+  because this is a heterogeneous big.LITTLE part; the flag is set per cluster,
+  where the four cores really are identical.
+
+  Parent links are byte offsets from the start of this table, so the node
+  offsets are load-bearing. OFFSET_OF keeps them honest against the struct
+  layout rather than being hand-copied constants.
+**/
+
+#include "Star2LteAcpiHeader.h"
+#include <IndustryStandard/Acpi63.h>
+
+#define STAR2LTE_NUM_CORES  8
+
+#define STAR2LTE_PPTT_SIGNATURE  SIGNATURE_32 ('P', 'P', 'T', 'T')
+#define STAR2LTE_PPTT_REVISION   0x03
+
+//
+// Processor hierarchy node (PPTT type 0) flags.
+//
+#define PPTT_FLAG_PHYSICAL_PACKAGE         BIT0
+#define PPTT_FLAG_ACPI_PROCESSOR_ID_VALID  BIT1
+#define PPTT_FLAG_PROCESSOR_IS_A_THREAD    BIT2
+#define PPTT_FLAG_NODE_IS_A_LEAF           BIT3
+#define PPTT_FLAG_IDENTICAL_IMPLEMENTATION BIT4
+
+#pragma pack (1)
+
+//
+// Type 0 processor hierarchy node with no private resources.
+//
+typedef struct {
+  UINT8     Type;
+  UINT8     Length;
+  UINT16    Reserved;
+  UINT32    Flags;
+  UINT32    Parent;
+  UINT32    AcpiProcessorId;
+  UINT32    NumberOfPrivateResources;
+} STAR2LTE_PPTT_NODE;
+
+typedef struct {
+  EFI_ACPI_DESCRIPTION_HEADER  Header;
+  STAR2LTE_PPTT_NODE           Package;
+  STAR2LTE_PPTT_NODE           Cluster[2];
+  STAR2LTE_PPTT_NODE           Core[STAR2LTE_NUM_CORES];
+} STAR2LTE_PPTT;
+
+#pragma pack ()
+
+#define PPTT_OFF_PACKAGE     ((UINT32)OFFSET_OF (STAR2LTE_PPTT, Package))
+#define PPTT_OFF_CLUSTER(n)  ((UINT32)(OFFSET_OF (STAR2LTE_PPTT, Cluster) + (n) * sizeof (STAR2LTE_PPTT_NODE)))
+
+#define PPTT_NODE(Flags, Parent, ProcId) \
+  { 0, sizeof (STAR2LTE_PPTT_NODE), 0, (Flags), (Parent), (ProcId), 0 }
+
+#define PPTT_CORE(ClusterIndex, ProcId) \
+  PPTT_NODE ( \
+    PPTT_FLAG_ACPI_PROCESSOR_ID_VALID | PPTT_FLAG_NODE_IS_A_LEAF, \
+    PPTT_OFF_CLUSTER (ClusterIndex), \
+    (ProcId) \
+    )
+
+STATIC STAR2LTE_PPTT  Pptt = {
+  ACPI_HEADER (
+    STAR2LTE_PPTT_SIGNATURE,
+    STAR2LTE_PPTT,
+    STAR2LTE_PPTT_REVISION
+    ),
+
+  //
+  // Root: the physical package. Not a leaf, no ACPI processor id.
+  //
+  PPTT_NODE (PPTT_FLAG_PHYSICAL_PACKAGE, 0, 0),
+
+  {
+    // cluster 0 — four identical Cortex-A55.
+    PPTT_NODE (PPTT_FLAG_IDENTICAL_IMPLEMENTATION, PPTT_OFF_PACKAGE, 0),
+    // cluster 1 — four identical Mongoose-M3.
+    PPTT_NODE (PPTT_FLAG_IDENTICAL_IMPLEMENTATION, PPTT_OFF_PACKAGE, 0),
+  },
+
+  {
+    // LITTLE cores, MADT GICC UID 0..3.
+    PPTT_CORE (0, 0),
+    PPTT_CORE (0, 1),
+    PPTT_CORE (0, 2),
+    PPTT_CORE (0, 3),
+    // big cores, MADT GICC UID 4..7.
+    PPTT_CORE (1, 4),
+    PPTT_CORE (1, 5),
+    PPTT_CORE (1, 6),
+    PPTT_CORE (1, 7),
+  }
+};
+
+//
+// Referenced by AcpiPlatformDxe so the linker keeps the table.
+//
+VOID *CONST  ReferenceAcpiTable = &Pptt;
