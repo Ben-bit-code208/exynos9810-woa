@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using S9Woa.Installer.Core.Device;
+using S9Woa.Installer.Core.Recovery;
 using S9Woa.Installer.Core.Stages;
 
 namespace S9Woa.Installer.App.Pages;
@@ -49,6 +50,55 @@ public sealed partial class ToolsPage : Page
     private async void OnDownload(object sender, RoutedEventArgs e) => await DeviceCommands.RebootAsync(XamlRoot, RebootTarget.Download);
 
     private async void OnSystem(object sender, RoutedEventArgs e) => await DeviceCommands.RebootAsync(XamlRoot, RebootTarget.System);
+
+    private async void OnRestartToTwrp(object sender, RoutedEventArgs e)
+    {
+        TwrpTicketText.Text = "Looking for the Exynos9810 storage driver...";
+        TicketDevice? device;
+        try
+        {
+            device = await Task.Run(() => AppServices.RecoveryTickets.FindDevice());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            TwrpTicketText.Text = $"Could not scan the disks: {ex.Message}";
+            return;
+        }
+        if (device is null)
+        {
+            TwrpTicketText.Text = "This only works while running Windows on the Galaxy S9+, with the Exynos9810 "
+                + "storage driver installed. No compatible disk answered on this PC.";
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = "Restart to TWRP now?",
+            Content = "Windows will restart and boot into TWRP recovery instead of Windows. "
+                + "Save your work and close other apps first.",
+            PrimaryButtonText = "Restart to TWRP",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            TwrpTicketText.Text = "Cancelled.";
+            return;
+        }
+
+        try
+        {
+            AppServices.Log($"arming UCR1 recovery ticket on PhysicalDrive{device.PhysicalDrive}");
+            TwrpTicketText.Text = "Scheduling the recovery restart...";
+            await Task.Run(() => AppServices.RecoveryTickets.RestartToRecovery());
+        }
+        catch (RecoveryTicketException ex)
+        {
+            AppServices.Log($"recovery ticket failed: {ex.Message}");
+            TwrpTicketText.Text = ex.Message;
+        }
+    }
 
     private async void OnSaveInfo(object sender, RoutedEventArgs e)
     {

@@ -2,6 +2,7 @@
 using S9Woa.Installer.Core.Device;
 using S9Woa.Installer.Core.Image;
 using S9Woa.Installer.Core.Processes;
+using S9Woa.Installer.Core.Recovery;
 using S9Woa.Installer.Core.Stages;
 
 namespace S9Woa.Installer.App;
@@ -24,6 +25,11 @@ internal static class AppServices
 
     public static DeviceSnapshot? CurrentDevice { get; set; }
     public static bool RisksAccepted { get; set; }
+
+    /// <summary>In-Windows (on the phone) Restart-to-TWRP over the UFS vendor ticket.</summary>
+    public static RecoveryTicketService RecoveryTickets { get; } =
+        new(new ScsiPassThroughTransportFactory(), new ShutdownExeRestart());
+
     public static string? MediaPath { get; set; } = State.MediaPath;
     public static SlimProfile Profile { get; set; } =
         Enum.TryParse<SlimProfile>(State.SlimProfile, out var p) ? p : SlimProfile.Lite;
