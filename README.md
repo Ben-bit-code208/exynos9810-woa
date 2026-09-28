@@ -31,22 +31,24 @@ verifies the result.
 |-------|-------|
 | Check this PC (admin, disk, adb, USB driver) | ✅ Ready |
 | Identify the phone | ✅ Ready |
+| Get Windows media | ✅ Ready |
+| Build the Windows image | 🧪 Experimental (VHDX: apply + drivers + slim + OOBE unattend + bcdboot, exported to a raw image) |
 | Unlock the bootloader | 🧑 Guided (you do it; the installer verifies) |
 | Install TWRP | 🧪 Experimental (flashes RECOVERY by name via Heimdall) |
 | Back up EFS / modem / partition table | 🧪 Experimental (verified backup to your PC) |
 | Prepare partitions | 🧪 Experimental (verifies the layout by name) |
-| Get Windows media | ✅ Ready |
-| Build the Windows image | 🧪 Experimental (VHDX: apply + drivers + slim + OOBE unattend + bcdboot, exported to a raw image) |
 | Copy Windows to the phone | 🧪 Experimental (raw image → USERDATA + boot files → EFI, verified) |
 | Install UEFI | 🧪 Experimental (UEFI → BOOT, verified) |
 | First boot | 🧪 Experimental (reboots into Windows; OOBE finishes to the desktop unattended) |
 
 The flow is end to end: from plugging the phone in to landing on the Windows
-desktop. The **Build the Windows image** step produces a bootable Windows volume
-(with your drivers, the optional slim profile and an OOBE answer file that
-creates your local account and skips the setup screens), and **Copy Windows**
-writes it plus the boot files to the phone. After **First boot**, Windows setup
-completes on its own and signs you in.
+desktop. All the slow PC-side work (choosing media and building the image) runs
+**before** the phone is touched, so the on-device steps — unlock, TWRP, backup,
+and the verified writes — run back to back. The **Build the Windows image** step
+produces a bootable Windows volume (with your drivers, the optional slim profile
+and an OOBE answer file that creates your local account and skips the setup
+screens); **Copy Windows** writes it plus the boot files to the phone. After
+**First boot**, Windows setup completes on its own and signs you in.
 
 **Experimental** steps are automated and unit-tested but not yet validated end
 to end on the reference device. They stay off until you tick *Run experimental

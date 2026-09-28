@@ -77,7 +77,7 @@ public class RecoveryAndStateTests
             var loaded = InstallState.Load(dir);
             Assert.Equal("ABC", loaded.DeviceSerial);
             Assert.Equal(StageStatus.Done, loaded.StatusOf("identify"));
-            Assert.Equal("unlock", loaded.NextStage()!.Id);
+            Assert.Equal("media", loaded.NextStage()!.Id);
             Assert.Contains("\"Done\"", File.ReadAllText(Path.Combine(dir, "state.json")), StringComparison.Ordinal);
             Assert.Throws<InvalidOperationException>(() => loaded.Set("nope", StageStatus.Done));
         }

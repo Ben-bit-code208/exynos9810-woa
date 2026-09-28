@@ -96,18 +96,20 @@ public class ImageBuilderTests
     }
 
     [Fact]
-    public void VhdxScriptCreatesEspMsrAndNtfs()
+    public void VhdxScriptCreates4KnEspMsrAndNtfs()
     {
         var builder = new VhdxImageBuilder(new RecordingRunner(), @"C:\sys");
         var script = builder.CreateScript(@"C:\img\s9.vhdx", 60000);
-        Assert.Contains("create vdisk file=\"C:\\img\\s9.vhdx\" maximum=60000", script, StringComparison.Ordinal);
-        Assert.Contains("convert gpt", script, StringComparison.Ordinal);
-        Assert.Contains("create partition efi size=260", script, StringComparison.Ordinal);
-        Assert.Contains("format fs=fat32 quick label=System", script, StringComparison.Ordinal);
-        Assert.Contains("create partition msr size=16", script, StringComparison.Ordinal);
-        Assert.Contains("format fs=ntfs quick label=Windows", script, StringComparison.Ordinal);
-        Assert.Contains("assign letter=S", script, StringComparison.Ordinal);
-        Assert.Contains("assign letter=W", script, StringComparison.Ordinal);
-        Assert.Contains("detach vdisk", builder.DetachScript(@"C:\img\s9.vhdx"), StringComparison.Ordinal);
+        Assert.Contains("New-VHD -Path 'C:\\img\\s9.vhdx'", script, StringComparison.Ordinal);
+        Assert.Contains("-LogicalSectorSizeBytes 4096 -PhysicalSectorSizeBytes 4096", script, StringComparison.Ordinal);
+        Assert.Contains("(60000MB)", script, StringComparison.Ordinal);
+        Assert.Contains("{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}", script, StringComparison.Ordinal); // ESP
+        Assert.Contains("{e3c9e316-0b5c-4db8-817d-f92df00215ae}", script, StringComparison.Ordinal); // MSR
+        Assert.Contains("{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}", script, StringComparison.Ordinal); // basic data
+        Assert.Contains("FAT32", script, StringComparison.Ordinal);
+        Assert.Contains("-FileSystem NTFS -AllocationUnitSize 4096", script, StringComparison.Ordinal);
+        Assert.Contains("-NewDriveLetter S", script, StringComparison.Ordinal);
+        Assert.Contains("-NewDriveLetter W", script, StringComparison.Ordinal);
+        Assert.Contains("Dismount-VHD", builder.DetachScript(@"C:\img\s9.vhdx"), StringComparison.Ordinal);
     }
 }

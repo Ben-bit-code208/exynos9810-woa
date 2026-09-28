@@ -18,7 +18,7 @@ public sealed record BuiltImage(string WindowsImage, long WindowsBytes, string W
 /// </summary>
 public sealed class VhdxImageBuilder
 {
-    private static readonly TimeSpan DiskpartTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan DiskTimeout = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan BootTimeout = TimeSpan.FromMinutes(10);
 
     private readonly IProcessRunner _runner;
@@ -26,7 +26,7 @@ public sealed class VhdxImageBuilder
     private readonly BootConfiguration _boot;
     private readonly RawImageExporter _exporter = new();
     private readonly Func<char, IRawDiskSource> _sourceFactory;
-    private readonly string _diskpart;
+    private readonly string _powershell;
     private readonly string _bcdboot;
 
     public VhdxImageBuilder(IProcessRunner runner, string? system32 = null, Func<char, IRawDiskSource>? sourceFactory = null)
@@ -36,31 +36,36 @@ public sealed class VhdxImageBuilder
         _imageBuilder = new ImageBuilder(runner, system32);
         _boot = new BootConfiguration(runner, system32);
         _sourceFactory = sourceFactory ?? (letter => new VolumeDiskSource(letter));
-        _diskpart = Path.Combine(system32, "diskpart.exe");
+        _powershell = Path.Combine(system32, @"WindowsPowerShell\v1.0\powershell.exe");
         _bcdboot = Path.Combine(system32, "bcdboot.exe");
     }
 
     public char EspLetter { get; init; } = 'S';
     public char WindowsLetter { get; init; } = 'W';
 
-    internal string CreateScript(string vhdxPath, long maxMegabytes) => string.Join("\r\n",
-        $"create vdisk file=\"{vhdxPath}\" maximum={maxMegabytes} type=expandable",
-        $"select vdisk file=\"{vhdxPath}\"",
-        "attach vdisk",
-        "convert gpt",
-        "create partition efi size=260",
-        "format fs=fat32 quick label=System",
-        $"assign letter={EspLetter}",
-        "create partition msr size=16",
-        "create partition primary",
-        "format fs=ntfs quick label=Windows",
-        $"assign letter={WindowsLetter}",
-        "exit");
+    /// <summary>
+    /// PowerShell that creates a 4Kn VHDX (the phone's UFS is a 4096-byte-sector
+    /// device) with an ESP, MSR and NTFS Windows partition. A 512-byte VHDX would
+    /// format NTFS for 512-byte sectors, which will not mount when written raw to
+    /// the 4Kn phone, so the sector size is explicit and asserted.
+    /// </summary>
+    internal string CreateScript(string vhdxPath, long maxMegabytes) => string.Join("\n",
+        "$ErrorActionPreference = 'Stop'",
+        $"$vhd = New-VHD -Path '{vhdxPath}' -Dynamic -SizeBytes ({maxMegabytes}MB) -LogicalSectorSizeBytes 4096 -PhysicalSectorSizeBytes 4096",
+        "$disk = Mount-VHD -Path $vhd.Path -NoDriveLetter -Passthru | Get-Disk",
+        "if ($disk.LogicalSectorSize -ne 4096) { throw 'VHDX is not a 4Kn disk' }",
+        "Initialize-Disk -Number $disk.Number -PartitionStyle GPT | Out-Null",
+        "$esp = New-Partition -DiskNumber $disk.Number -Size 260MB -GptType '{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'",
+        "Format-Volume -Partition $esp -FileSystem FAT32 -NewFileSystemLabel 'System' -Confirm:$false | Out-Null",
+        $"$esp | Set-Partition -NewDriveLetter {EspLetter}",
+        "New-Partition -DiskNumber $disk.Number -Size 16MB -GptType '{e3c9e316-0b5c-4db8-817d-f92df00215ae}' | Out-Null",
+        "$win = New-Partition -DiskNumber $disk.Number -UseMaximumSize -GptType '{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}'",
+        "Format-Volume -Partition $win -FileSystem NTFS -AllocationUnitSize 4096 -NewFileSystemLabel 'Windows' -Confirm:$false | Out-Null",
+        $"$win | Set-Partition -NewDriveLetter {WindowsLetter}");
 
-    internal string DetachScript(string vhdxPath) => string.Join("\r\n",
-        $"select vdisk file=\"{vhdxPath}\"",
-        "detach vdisk",
-        "exit");
+    internal string DetachScript(string vhdxPath) => string.Join("\n",
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        $"Dismount-VHD -Path '{vhdxPath}'");
 
     public async Task<BuiltImage> BuildAsync(string vhdxPath, long maxMegabytes, string installImage, int index,
         IReadOnlyList<DriverPackage> drivers, SlimProfile profile, UnattendOptions unattend, string outputDir,
@@ -77,10 +82,10 @@ public sealed class VhdxImageBuilder
         var espOut = Path.Combine(outputDir, "esp");
 
         log?.Report("Creating the VHDX and its partitions...");
-        await Diskpart(CreateScript(vhdxPath, maxMegabytes), ct).ConfigureAwait(false);
+        await RunScript(CreateScript(vhdxPath, maxMegabytes), ct).ConfigureAwait(false);
         try
         {
-            await _imageBuilder.BuildAsync(winRoot.TrimEnd('\\'), installImage, index, drivers, profile, log, ct).ConfigureAwait(false);
+            await _imageBuilder.BuildAsync(winRoot, installImage, index, drivers, profile, log, ct).ConfigureAwait(false);
 
             log?.Report("Writing the OOBE answer file...");
             var unattendPath = Path.Combine(winRoot, UnattendXml.RelativePath);
@@ -109,7 +114,7 @@ public sealed class VhdxImageBuilder
         finally
         {
             log?.Report("Detaching the VHDX...");
-            await Diskpart(DetachScript(vhdxPath), CancellationToken.None).ConfigureAwait(false);
+            await RunScript(DetachScript(vhdxPath), CancellationToken.None).ConfigureAwait(false);
         }
     }
 
@@ -126,16 +131,17 @@ public sealed class VhdxImageBuilder
         }
     }
 
-    private async Task Diskpart(string script, CancellationToken ct)
+    private async Task RunScript(string script, CancellationToken ct)
     {
-        var file = Path.Combine(Path.GetTempPath(), $"s9woa-dp-{Guid.NewGuid():N}.txt");
+        var file = Path.Combine(Path.GetTempPath(), $"s9woa-vhdx-{Guid.NewGuid():N}.ps1");
         await File.WriteAllTextAsync(file, script, ct).ConfigureAwait(false);
         try
         {
-            var r = await _runner.RunAsync(_diskpart, ["/s", file], DiskpartTimeout, ct).ConfigureAwait(false);
+            var r = await _runner.RunAsync(_powershell,
+                ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", file], DiskTimeout, ct).ConfigureAwait(false);
             if (!r.Succeeded)
             {
-                throw new InvalidOperationException($"diskpart failed: {(r.StdErr + r.StdOut).Trim()}");
+                throw new InvalidOperationException($"VHDX preparation failed: {(r.StdErr + r.StdOut).Trim()}");
             }
         }
         finally
