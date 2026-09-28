@@ -30,30 +30,6 @@ public sealed partial class AdbClient
 
     public string AdbPath { get; }
 
-    /// <summary>Finds adb bundled with the app, on PATH, or in the WinGet package folder.</summary>
-    public static string? Locate(string appDirectory)
-    {
-        var candidates = new List<string>
-        {
-            Path.Combine(appDirectory, "tools", "platform-tools", "adb.exe"),
-        };
-        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
-        {
-            if (!string.IsNullOrWhiteSpace(dir))
-            {
-                candidates.Add(Path.Combine(dir.Trim(), "adb.exe"));
-            }
-        }
-        var winget = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Microsoft", "WinGet", "Packages");
-        if (Directory.Exists(winget))
-        {
-            candidates.AddRange(Directory.EnumerateDirectories(winget, "Google.PlatformTools_*")
-                .Select(d => Path.Combine(d, "platform-tools", "adb.exe")));
-        }
-        return candidates.FirstOrDefault(File.Exists);
-    }
-
     public async Task<IReadOnlyList<AdbDevice>> ListDevicesAsync(CancellationToken ct = default)
     {
         var r = await _runner.RunAsync(AdbPath, ["devices", "-l"], Timeout, ct).ConfigureAwait(false);

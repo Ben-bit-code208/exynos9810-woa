@@ -58,23 +58,43 @@ to recover from the backups this installer makes.
 Quality-of-life tools (e.g. "Restart to TWRP" from inside Windows) live on the
 **Tools** page.
 
-### Build artefacts the installer expects
+### First-run setup
 
-Some steps need binaries you build from this repo. Put them next to the
-installer in a `payload\` folder:
+The first time it runs, the installer opens **Set up**. The install pages stay
+locked until everything below is ready, and the choices are remembered in
+`%LOCALAPPDATA%\S9WoaInstaller\toolset.json`.
 
-| File | Used by | Built from |
-|------|---------|-----------|
-| `payload\twrp.img` | Install TWRP | your TWRP build for star2lte |
-| `payload\uefi.img` | Install UEFI | `firmware\` |
-| `payload\drivers\` | Build the Windows image | `drivers\Exynos9810Ufs`, `drivers\S6SY761Touch` |
+| Item | How Setup provides it |
+|------|------------------------|
+| Android platform tools (adb) | winget `Google.PlatformTools` |
+| Heimdall | winget `BenjaminDobell.Heimdall` |
+| Zadig | winget `akeo.ie.Zadig` |
+| Samsung USB driver | You download Samsung's installer; Setup runs it only if it is validly signed by Samsung Electronics |
+| TWRP for star2lte | Setup opens the official TWRP page; you choose the downloaded `twrp-*-star2lte.img` (checked for the model name, the boot-image header and the RECOVERY size) |
+| UEFI image | Latest project release (`uefi.img`), or your local build folder |
+| Phone drivers | Latest project release (`drivers.zip`), or your local build folder |
+| Download-mode USB driver (WinUSB) | Done later, while installing TWRP: Setup opens Zadig to bind the phone's Download-mode interface |
+
+**Set up automatically** installs everything that needs no decision from you.
+Release downloads are kept only if they match the release's `SHA256SUMS`; a
+release without that file is refused. Any program can be replaced with your own
+copy (*Use a different file…*), and a local build folder takes precedence over
+releases.
 
 The raw Windows image and boot files are produced automatically by the **Build
 the Windows image** step (under the installer's work folder); you don't supply
 them.
 
-`adb.exe` is found on `PATH` or via `winget install Google.PlatformTools`.
-Heimdall (for flashing TWRP) is found on `PATH` or at `tools\heimdall\heimdall.exe`.
+### Publishing a release payload
+
+`tools\release\make-payload.ps1` assembles the three release assets the
+installer downloads (`uefi.img`, `drivers.zip`, `SHA256SUMS`) from your builds:
+
+```powershell
+.\tools\release\make-payload.ps1 -Uefi <packed uefi boot.img> `
+    -Drivers <Exynos9810Ufs package>, <S6SY761Touch package> -OutDir out\release
+gh release create v0.1.0 (Get-ChildItem out\release).FullName
+```
 
 ### Build the installer
 

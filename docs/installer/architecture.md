@@ -15,14 +15,46 @@ installer/
       Processes/            process launching / output capture helpers
       Recovery/             UCR1 "restart to recovery" ticket protocol
       Stages/               StageCatalog + resumable InstallState
+      Toolset/              first-run toolset: detect, acquire and remember tools
     S9Woa.Installer.App/    WinUI 3 front-end
-      Pages/                Welcome, Host, Phone, Image, Install, Tools, About
+      Pages/                Welcome, Setup, Host, Phone, Image, Install, Tools, About
   tests/
     S9Woa.Installer.Core.Tests/   xUnit tests for the engine
 ```
 
 The engine (`S9Woa.Installer.Core`) has no UI dependency so it can be tested and
 scripted. The WinUI app is a thin shell over it.
+
+## First-run toolset
+
+`Toolset/ToolDefinitions.cs` lists everything the installer needs; the Setup
+page renders one card per entry. `ToolsetManager` detects each item, acquires it,
+and persists choices to `toolset.json` (release repository, local build folder,
+program overrides). The install pages are locked until `ToolsetManager.IsComplete`
+holds: every required item is `Ready`, and optional ones may be `Deferred`.
+
+- **Programs** (adb, Heimdall, Zadig) — `ToolLocator` checks, in order: a
+  user override, the app's `tools\` folder, winget portable installs (per-user and
+  machine, packages and links), then `PATH`. `WingetClient` installs by exact id;
+  success is judged by re-detection, not winget exit codes.
+- **Samsung USB driver** — detected by its `dg_ssudbus` service. The user's
+  downloaded installer runs only after `AuthenticodeVerifier` (`WinVerifyTrust`)
+  confirms a trusted chain and a Samsung Electronics signer.
+- **TWRP** — the user's download is accepted only if the name is a star2lte build
+  and `BootImage` sees an `ANDROID!` header that fits RECOVERY.
+- **UEFI and drivers** — `ReleaseClient` reads the latest release of the
+  configured repository and keeps an asset only if it matches `SHA256SUMS` (a
+  release without it is refused). `drivers.zip` is extracted with an
+  archive-escape guard. A local build folder (`UseBuildFolder`) takes precedence;
+  it imports the newest valid `*uefi*.img` and only *built* driver packages (an
+  `.inf` next to a `.sys`). `tools/release/make-payload.ps1` produces the matching
+  release assets.
+- **Download-mode driver** — `DownloadModeDriver` reads the USB enumeration
+  key for `VID_04E8&PID_685D`; it stays `Deferred` until Zadig binds WinUSB, which
+  can only happen with the phone in Download mode during the TWRP stage.
+
+Registry, signature checks, winget and HTTP are behind interfaces, so the tests
+cover these paths without touching the PC or the network.
 
 ## Stages and honest gating
 

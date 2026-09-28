@@ -11,13 +11,10 @@ run is that validation. Work through it in order and note where it stops.
 - [ ] A microSD card in the phone (partition backups and image windows stage
       through `/external_sd`).
 - [ ] On the PC: run the installer **as administrator**.
-- [ ] `adb` on `PATH` (`winget install Google.PlatformTools`).
-- [ ] `heimdall.exe` on `PATH` or in `tools\heimdall\`, with the Zadig/libusbK
-      driver bound to the phone's Download-mode interface.
-- [ ] Samsung USB Driver for Mobile Phones installed.
-- [ ] `payload\twrp.img` (TWRP for star2lte) and `payload\uefi.img` (from
-      `firmware\`) next to the installer.
-- [ ] `payload\drivers\` containing the built UFS and touch driver packages.
+- [ ] Complete the **Set up** page: *Set up automatically* installs adb, Heimdall
+      and Zadig and downloads the verified UEFI and driver payloads; you add the
+      Samsung USB driver installer and the TWRP `twrp-*-star2lte.img`. Using a
+      local build folder instead of a release is fine.
 - [ ] At least ~80 GB free on the PC drive that holds the work folder.
 
 ## Run

@@ -179,13 +179,18 @@ public sealed partial class InstallPage : Page
     {
         if (AppServices.TwrpImagePath is null)
         {
-            return (false, "Place a TWRP image at payload\\twrp.img next to the installer, then retry.");
+            return (false, "TWRP is not set up. Add it on the Set up page, then press Resume.");
         }
         var resolved = await AppServices.TwrpFlasher.ResolveAsync(ct);
         if (resolved is null)
         {
-            return (false, "Put the phone in Download mode and install Heimdall (with the Zadig/libusbK driver). "
-                + "Power off, hold Volume Down + Bixby + Power, then press Volume Up to enter Download mode.");
+            var binding = Core.Toolset.DownloadModeDriver.Detect(new Core.Toolset.LocalMachineRegistry());
+            return (false, AppServices.HeimdallPath is null
+                ? "Heimdall is not set up. Install it on the Set up page, then press Resume."
+                : "Heimdall can't see the phone. Put it in Download mode (power off, hold Volume Down + Bixby + Power, then press Volume Up). "
+                  + (binding.State == Core.Toolset.ToolState.Ready
+                      ? "Then press Resume."
+                      : "The first time, open Set up > Download-mode USB driver > Open Zadig, select the Samsung device (04E8 685D), choose WinUSB and click Replace Driver. Then press Resume."));
         }
         await AppServices.TwrpFlasher.FlashRecoveryAsync(AppServices.TwrpImagePath, log, ct);
 
@@ -254,8 +259,7 @@ public sealed partial class InstallPage : Page
         var drivers = ImageBuilder.DiscoverDrivers(AppServices.DriversDirectory);
         if (drivers.Count == 0)
         {
-            return (false, $"No built driver packages found under {AppServices.DriversDirectory}. "
-                + "Build the UFS and touch drivers and copy their output there.");
+            return (false, "The phone drivers are not set up. Add them on the Set up page (release download or build folder).");
         }
         var outDir = Path.Combine(AppServices.WorkDirectory, "out");
         var vhdx = Path.Combine(AppServices.WorkDirectory, "s9windows.vhdx");
@@ -341,7 +345,7 @@ public sealed partial class InstallPage : Page
         }
         if (AppServices.UefiImagePath is null)
         {
-            return (false, $"Place the UEFI image at payload\\uefi.img next to the installer.");
+            return (false, "The UEFI image is not set up. Add it on the Set up page, then press Resume.");
         }
         await new TransferService(twrp).WriteWholePartitionAsync(PartitionMap.UefiTarget, AppServices.UefiImagePath, log, ct);
         return (true, "UEFI installed to BOOT. RECOVERY keeps TWRP.");

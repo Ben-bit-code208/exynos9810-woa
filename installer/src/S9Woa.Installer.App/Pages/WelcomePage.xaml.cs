@@ -18,5 +18,6 @@ public sealed partial class WelcomePage : Page
         ContinueButton.IsEnabled = AppServices.RisksAccepted;
     }
 
-    private void OnContinue(object sender, RoutedEventArgs e) => App.Window?.NavigateTo("host");
+    private void OnContinue(object sender, RoutedEventArgs e) =>
+        App.Window?.NavigateTo(App.Window.SetupComplete ? "host" : "setup");
 }

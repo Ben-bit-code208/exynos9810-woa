@@ -15,6 +15,7 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        AppServices.ReloadTools();
         Window = new MainWindow();
         Window.Activate();
     }

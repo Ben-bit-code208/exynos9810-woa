@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="S9Woa.Installer.App.Pages.SetupPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer Style="{StaticResource PageRootStyle}">
+        <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Left">
+            <StackPanel>
+                <TextBlock Text="Set up this PC" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}"
+                           Text="The installer needs a few programs, a USB driver and the phone's boot files. It installs everything it can by itself and remembers your choices, so this only happens once." />
+            </StackPanel>
+
+            <InfoBar x:Name="WingetBar" IsClosable="False" Severity="Warning" Title="winget is not available"
+                     Message="Install &quot;App Installer&quot; from the Microsoft Store to let the installer fetch programs automatically, or choose each file yourself below." />
+
+            <Border Style="{StaticResource CardStyle}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4" VerticalAlignment="Center">
+                        <TextBlock x:Name="SummaryTitle" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock x:Name="SummaryText" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ProgressBar x:Name="AutoProgress" IsIndeterminate="True" Visibility="Collapsed" Margin="0,8,0,0" />
+                    </StackPanel>
+                    <Button x:Name="AutoButton" Grid.Column="1" Style="{StaticResource AccentButtonStyle}" Click="OnAuto" MinWidth="200" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE896;" FontSize="14" />
+                            <TextBlock Text="Set up automatically" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <ItemsControl x:Name="ToolList">
+                <ItemsControl.ItemContainerTransitions>
+                    <TransitionCollection><EntranceThemeTransition IsStaggeringEnabled="True" /></TransitionCollection>
+                </ItemsControl.ItemContainerTransitions>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8" Padding="16">
+                            <Grid ColumnSpacing="14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid VerticalAlignment="Top" Margin="0,2,0,0" Width="20">
+                                    <FontIcon Glyph="{Binding Glyph}" Foreground="{Binding Brush}" FontSize="18" />
+                                    <ProgressRing IsActive="{Binding Busy}" Width="18" Height="18" />
+                                </Grid>
+                                <StackPanel Grid.Column="1" Spacing="4">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Name}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <Border CornerRadius="4" Padding="6,1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" Visibility="{Binding BadgeVisibility}">
+                                            <TextBlock Text="{Binding Badge}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Purpose}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" IsTextSelectionEnabled="True" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                                        <Button Content="Install" Tag="{Binding Id}" Click="OnWinget" Visibility="{Binding WingetVisibility}" IsEnabled="{Binding ActionsEnabled}" />
+                                        <Button Content="Open download page" Tag="{Binding Id}" Click="OnOpenPage" Visibility="{Binding OpenPageVisibility}" IsEnabled="{Binding ActionsEnabled}" />
+                                        <Button Content="Download from release" Tag="{Binding Id}" Click="OnRelease" Visibility="{Binding ReleaseVisibility}" IsEnabled="{Binding ActionsEnabled}" />
+                                        <Button Content="Use build folder…" Tag="{Binding Id}" Click="OnBuildFolder" Visibility="{Binding BuildFolderVisibility}" IsEnabled="{Binding ActionsEnabled}" />
+                                        <Button Content="{Binding PickFileLabel}" Tag="{Binding Id}" Click="OnPickFile" Visibility="{Binding PickFileVisibility}" IsEnabled="{Binding ActionsEnabled}" />
+                                        <Button Content="Open Zadig" Tag="{Binding Id}" Click="OnLaunchZadig" Visibility="{Binding LaunchVisibility}" IsEnabled="{Binding ActionsEnabled}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Expander Header="Advanced" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                <StackPanel Spacing="12">
+                    <TextBox x:Name="RepoBox" Header="GitHub repository for UEFI and driver releases (owner/name)" LostFocus="OnRepoChanged" />
+                    <TextBlock x:Name="BuildFolderText" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+                    <TextBlock TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                               Text="Release downloads are only kept when they match the release's SHA256SUMS. The Samsung driver installer only runs when it is validly signed by Samsung Electronics." />
+                </StackPanel>
+            </Expander>
+
+            <InfoBar x:Name="ResultBar" IsClosable="True" />
+
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="FinishButton" Style="{StaticResource AccentButtonStyle}" Click="OnFinish" MinWidth="160" IsEnabled="False" Content="Finish setup" />
+                <Button Content="Check again" Click="OnRecheck" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

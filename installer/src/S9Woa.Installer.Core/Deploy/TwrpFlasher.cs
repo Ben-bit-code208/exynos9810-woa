@@ -36,20 +36,6 @@ public sealed class HeimdallTwrpFlasher : ITwrpFlasher
 
     public string Name => "Heimdall";
 
-    /// <summary>Finds heimdall.exe next to the app, on PATH, or in common install folders.</summary>
-    public static string? Locate(string appDirectory)
-    {
-        var candidates = new List<string> { Path.Combine(appDirectory, "tools", "heimdall", "heimdall.exe") };
-        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
-        {
-            if (!string.IsNullOrWhiteSpace(dir))
-            {
-                candidates.Add(Path.Combine(dir.Trim(), "heimdall.exe"));
-            }
-        }
-        return candidates.FirstOrDefault(File.Exists);
-    }
-
     public async Task<bool> IsAvailableAsync(CancellationToken ct = default)
     {
         if (!File.Exists(_heimdall))
