@@ -47,6 +47,22 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Your Windows account" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="The installer finishes setup automatically and signs you in to a local administrator account with these details. You can add a Microsoft account later in Windows." />
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="AccountName" Header="User name" Text="S9" TextChanged="OnAccountChanged" />
+                        <PasswordBox x:Name="AccountPassword" Grid.Column="1" Header="Password (optional)" PasswordChanged="OnAccountChanged" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <Button x:Name="ContinueButton" Content="Continue" Style="{StaticResource AccentButtonStyle}"
                     IsEnabled="False" Click="OnContinue" MinWidth="140" />
         </StackPanel>

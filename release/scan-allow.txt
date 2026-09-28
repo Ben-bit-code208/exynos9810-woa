@@ -9,3 +9,7 @@ drivers/S6SY761Touch/S6SY761Touch.inf email
 drivers/S6SY761Touch/TouchDriverUpdate.h workspace-path
 # The application icon is an intentional binary asset.
 installer/src/S9Woa.Installer.App/Assets/AppIcon.ico binary
+# Well-known public Microsoft component publicKeyToken used in the unattend schema (not a secret).
+installer/src/S9Woa.Installer.Core/Image/UnattendXml.cs secret-assign
+# Fake ESP drive letter (S:) in boot-config tests, not a workspace path.
+installer/tests/S9Woa.Installer.Core.Tests/OobeAndExportTests.cs workspace-path

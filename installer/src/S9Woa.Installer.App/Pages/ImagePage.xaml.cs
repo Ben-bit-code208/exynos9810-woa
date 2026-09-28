@@ -67,4 +67,14 @@ public sealed partial class ImagePage : Page
     }
 
     private void OnContinue(object sender, RoutedEventArgs e) => App.Window?.NavigateTo("install");
+
+    private void OnAccountChanged(object sender, RoutedEventArgs e)
+    {
+        var name = AccountName.Text.Trim();
+        AppServices.Unattend = AppServices.Unattend with
+        {
+            Username = name.Length == 0 ? "S9" : name,
+            Password = AccountPassword.Password.Length == 0 ? null : AccountPassword.Password,
+        };
+    }
 }

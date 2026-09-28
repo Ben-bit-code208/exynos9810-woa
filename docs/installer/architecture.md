@@ -61,16 +61,28 @@ seams so it is unit-tested without hardware:
   raw Windows volume to USERDATA in 1-MiB-aligned windows (each read back and
   hashed), and whole small images (UEFI) to BOOT. It refuses a destination
   smaller than the image and refuses to write a mounted target.
+- `BootFilesService` — mounts the phone's FAT EFI system partition and copies the
+  built ESP tree onto it (plus a `/cache` BCD copy the firmware also consults).
+- `BootConfiguration` — retargets the freshly built BCD so the boot manager and
+  loader find Windows by locating `\Windows`, rather than by a partition GUID the
+  raw USERDATA volume does not have. Uses only public `bcdedit` features.
 
-`Image/VhdxImageBuilder` builds the bootable Windows disk on the PC: it scripts
-diskpart to create an ESP + MSR + NTFS layout in a VHDX, applies the edition,
-injects drivers, runs the slim profile, and runs `bcdboot`. Exporting that
-VHDX's Windows partition to `work\windows.img` (the raw image the transfer stage
-writes to USERDATA) and copying the ESP/BCD to the device EFI partition are the
-remaining integration steps, finalised during on-device validation.
+`Image/VhdxImageBuilder` runs the whole host build: it scripts diskpart to create
+an ESP + MSR + NTFS layout in a VHDX, applies the edition, injects drivers, runs
+the slim profile, writes the OOBE answer file (`UnattendXml`), runs `bcdboot`,
+retargets the BCD, then exports the NTFS volume to `work\out\windows.img`
+(`RawImageExporter` over a `VolumeDiskSource`) and copies the ESP to
+`work\out\esp`. Those two outputs are exactly what the transfer stage writes to
+the phone.
+
+- `Image/UnattendXml` — a clean-room generator of the standard `oobeSystem`
+  answer file: a local administrator account, skipped EULA/privacy/MSA/wireless
+  screens, and locale/time-zone/computer-name. This is what makes OOBE finish to
+  the desktop without user input.
 
 The validated device targets are in `Deploy/PartitionMap`: Windows to
-`USERDATA`, UEFI to `BOOT`, TWRP to `RECOVERY`.
+`USERDATA`, UEFI to `BOOT`, TWRP to `RECOVERY`, and boot files to the FAT EFI
+system partition.
 
 A self-contained C# Odin/Thor implementation is intended as the primary flasher;
 it must be ported from the authoritative Heimdall protocol and validated on the

@@ -125,6 +125,33 @@ public sealed partial class TwrpClient
     public Task RemoveAsync(string devicePath, CancellationToken ct = default) =>
         ShellCheckedAsync($"rm -f {devicePath}", Quick, ct);
 
+    /// <summary>Runs an arbitrary checked shell command in TWRP and returns stdout.</summary>
+    public Task<string> ShellAsync(string command, CancellationToken ct = default) =>
+        ShellCheckedAsync(command, Long, ct);
+
+    public Task MakeDirAsync(string devicePath, CancellationToken ct = default) =>
+        ShellCheckedAsync($"mkdir -p {devicePath}", Quick, ct);
+
+    /// <summary>Mounts a vfat partition node at a mountpoint (created first).</summary>
+    public async Task MountVfatAsync(string node, string mountpoint, CancellationToken ct = default)
+    {
+        await MakeDirAsync(mountpoint, ct).ConfigureAwait(false);
+        await ShellCheckedAsync($"mount -t vfat -o rw {node} {mountpoint}", Quick, ct).ConfigureAwait(false);
+    }
+
+    public Task UnmountAsync(string mountpoint, CancellationToken ct = default) =>
+        ShellCheckedAsync($"umount {mountpoint}", Quick, ct);
+
+    /// <summary>Recursively pushes a host directory's contents into a device directory.</summary>
+    public async Task PushTreeAsync(string hostDir, string deviceDir, CancellationToken ct = default)
+    {
+        var r = await AdbAsync(["push", hostDir.TrimEnd('\\'), deviceDir], Long, ct).ConfigureAwait(false);
+        if (!r.Succeeded)
+        {
+            throw new InvalidOperationException($"adb push {hostDir} failed: {(r.StdErr + r.StdOut).Trim()}");
+        }
+    }
+
     /// <summary>True when <paramref name="mountpoint"/> appears in /proc/mounts.</summary>
     public async Task<bool> IsMountedAsync(string mountpoint, CancellationToken ct = default)
     {

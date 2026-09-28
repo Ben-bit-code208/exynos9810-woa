@@ -29,4 +29,14 @@ public static class PartitionMap
 
     /// <summary>Partition TWRP is flashed to from Download mode.</summary>
     public const string RecoveryTarget = "recovery";
+
+    /// <summary>
+    /// FAT EFI system partition that holds <c>\EFI\Microsoft\Boot\BCD</c> and the
+    /// boot manager. This device exposes it by node rather than a stable by-name
+    /// link; the value is the validated star2lte EFI system partition.
+    /// </summary>
+    public const string EfiSystemNode = "/dev/block/sda18";
+
+    /// <summary>A second BCD copy the firmware also consults.</summary>
+    public const string CacheBcdDir = "/cache/EFI/Microsoft/Boot";
 }

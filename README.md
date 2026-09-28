@@ -36,18 +36,22 @@ verifies the result.
 | Back up EFS / modem / partition table | 🧪 Experimental (verified backup to your PC) |
 | Prepare partitions | 🧪 Experimental (verifies the layout by name) |
 | Get Windows media | ✅ Ready |
-| Build the Windows image (with optional slimming) | 🧪 Experimental (apply + inject drivers + slim) |
-| Copy Windows to the phone | 🧪 Experimental (raw image → USERDATA, verified per window) |
+| Build the Windows image | 🧪 Experimental (VHDX: apply + drivers + slim + OOBE unattend + bcdboot, exported to a raw image) |
+| Copy Windows to the phone | 🧪 Experimental (raw image → USERDATA + boot files → EFI, verified) |
 | Install UEFI | 🧪 Experimental (UEFI → BOOT, verified) |
-| First boot | 🧪 Experimental (reboots into Windows) |
+| First boot | 🧪 Experimental (reboots into Windows; OOBE finishes to the desktop unattended) |
+
+The flow is end to end: from plugging the phone in to landing on the Windows
+desktop. The **Build the Windows image** step produces a bootable Windows volume
+(with your drivers, the optional slim profile and an OOBE answer file that
+creates your local account and skips the setup screens), and **Copy Windows**
+writes it plus the boot files to the phone. After **First boot**, Windows setup
+completes on its own and signs you in.
 
 **Experimental** steps are automated and unit-tested but not yet validated end
 to end on the reference device. They stay off until you tick *Run experimental
 steps* on the Install page. Please only enable them on a device you are prepared
-to recover from the backups this installer makes. The **Copy Windows** step
-writes a raw Windows volume image to USERDATA in verified windows; producing that
-`work\windows.img` (build a bootable VHDX, then export its Windows partition) is
-the last host step being wired — see `docs/installer/architecture.md`.
+to recover from the backups this installer makes.
 
 Quality-of-life tools (e.g. "Restart to TWRP" from inside Windows) live on the
 **Tools** page.
@@ -62,6 +66,10 @@ installer in a `payload\` folder:
 | `payload\twrp.img` | Install TWRP | your TWRP build for star2lte |
 | `payload\uefi.img` | Install UEFI | `firmware\` |
 | `payload\drivers\` | Build the Windows image | `drivers\Exynos9810Ufs`, `drivers\S6SY761Touch` |
+
+The raw Windows image and boot files are produced automatically by the **Build
+the Windows image** step (under the installer's work folder); you don't supply
+them.
 
 `adb.exe` is found on `PATH` or via `winget install Google.PlatformTools`.
 Heimdall (for flashing TWRP) is found on `PATH` or at `tools\heimdall\heimdall.exe`.

@@ -257,10 +257,18 @@ public sealed partial class InstallPage : Page
             return (false, $"No built driver packages found under {AppServices.DriversDirectory}. "
                 + "Build the UFS and touch drivers and copy their output there.");
         }
-        var applyDir = Path.Combine(AppServices.WorkDirectory, "image");
-        await new ImageBuilder(AppServices.Runner).BuildAsync(applyDir, AppServices.InstallImagePath!,
-            AppServices.EditionIndex, drivers, AppServices.Profile, log, ct);
-        return (true, $"Windows image built at {applyDir} with {drivers.Count} driver packages.");
+        var outDir = Path.Combine(AppServices.WorkDirectory, "out");
+        var vhdx = Path.Combine(AppServices.WorkDirectory, "s9windows.vhdx");
+        Directory.CreateDirectory(AppServices.WorkDirectory);
+        if (File.Exists(vhdx))
+        {
+            File.Delete(vhdx);
+        }
+        var built = await new VhdxImageBuilder(AppServices.Runner).BuildAsync(vhdx, AppServices.WindowsVolumeMib + 300,
+            AppServices.InstallImagePath!, AppServices.EditionIndex, drivers, AppServices.Profile,
+            AppServices.Unattend, outDir, log, ct);
+        AppServices.Built = built;
+        return (true, $"Windows image built: {built.WindowsBytes >> 20} MiB volume + boot files, {drivers.Count} drivers, {AppServices.Profile} profile.");
     }
 
     private static TwrpClient? RequireTwrp(out DeviceSnapshot? dev, out string error)
@@ -311,11 +319,17 @@ public sealed partial class InstallPage : Page
         }
         if (!File.Exists(AppServices.WindowsImagePath))
         {
-            return (false, $"No Windows image at {AppServices.WindowsImagePath}. Build it (VHDX build + export) first.");
+            return (false, $"No Windows image at {AppServices.WindowsImagePath}. Run the Build the Windows image step first.");
         }
         await new TransferService(twrp).WriteRawImageAsync(PartitionMap.WindowsTarget, AppServices.WindowsImagePath,
             windowMiB: 256, mountToEnsureUnmounted: "/data", log: log, ct: ct);
-        return (true, "Windows written and verified on the phone.");
+
+        if (Directory.Exists(AppServices.EspDirectory))
+        {
+            log.Report("Writing the Windows boot files...");
+            await new BootFilesService(twrp).WriteAsync(AppServices.EspDirectory, log, ct);
+        }
+        return (true, "Windows and boot files written and verified on the phone.");
     }
 
     private static async Task<(bool, string)> RunUefiAsync(IProgress<string> log, CancellationToken ct)

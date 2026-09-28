@@ -28,7 +28,19 @@ internal static class AppServices
     public static string? UefiImagePath => FirstExisting(Path.Combine(PayloadDirectory, "uefi.img"), Path.Combine(PayloadDirectory, "boot.img"));
 
     /// <summary>Raw Windows volume image (produced by the VHDX build + export) written to USERDATA.</summary>
-    public static string WindowsImagePath => Path.Combine(WorkDirectory, "windows.img");
+    public static string WindowsImagePath => Path.Combine(WorkDirectory, "out", "windows.img");
+
+    /// <summary>ESP boot files (produced by the VHDX build) copied to the phone's EFI partition.</summary>
+    public static string EspDirectory => Path.Combine(WorkDirectory, "out", "esp");
+
+    /// <summary>NTFS Windows volume size inside the built VHDX, in MiB (fits the phone's USERDATA).</summary>
+    public static long WindowsVolumeMib { get; } = 52000;
+
+    /// <summary>OOBE answer-file choices for the built image.</summary>
+    public static Core.Image.UnattendOptions Unattend { get; set; } = new();
+
+    /// <summary>Last successful image build, if any.</summary>
+    public static Core.Image.BuiltImage? Built { get; set; }
 
     public static string? AdbPath { get; } = AdbClient.Locate(AppContext.BaseDirectory);
     public static AdbClient? Adb { get; } = AdbPath is null ? null : new AdbClient(AdbPath, Runner);
