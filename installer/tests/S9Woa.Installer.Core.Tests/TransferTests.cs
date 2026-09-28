@@ -15,7 +15,8 @@ public class TransferTests
         private readonly Dictionary<string, byte[]> _sd = new(StringComparer.Ordinal);
         public byte[] Partition { get; }
         public string PartitionName { get; }
-        public bool Mounted { get; init; }
+        public bool Mounted { get; set; }
+        public bool StickyMount { get; init; }
 
         public FakePartitionRunner(string name, long sizeBytes)
         {
@@ -44,6 +45,14 @@ public class TransferTests
             }
             if (cmd.StartsWith("mkdir", StringComparison.Ordinal) || cmd.StartsWith("rm ", StringComparison.Ordinal))
             {
+                return Ok("");
+            }
+            if (cmd.StartsWith("umount", StringComparison.Ordinal))
+            {
+                if (!StickyMount)
+                {
+                    Mounted = false;
+                }
                 return Ok("");
             }
             if (cmd.StartsWith("dd if=", StringComparison.Ordinal) && cmd.Contains($"of={dev}", StringComparison.Ordinal))
@@ -130,16 +139,37 @@ public class TransferTests
     }
 
     [Fact]
-    public async Task RefusesWhenTargetMounted()
+    public async Task RefusesWhenTargetCannotBeUnmounted()
     {
         var image = Path.GetTempFileName();
         try
         {
             await File.WriteAllBytesAsync(image, new byte[1 * Mib]);
-            var runner = new FakePartitionRunner("userdata", 8 * Mib) { Mounted = true };
+            var runner = new FakePartitionRunner("userdata", 8 * Mib) { Mounted = true, StickyMount = true };
             var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 new TransferService(twrp).WriteRawImageAsync("userdata", image, 1, "/data"));
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
+    public async Task AutoUnmountsMountedTargetThenWrites()
+    {
+        var image = Path.GetTempFileName();
+        try
+        {
+            var bytes = new byte[2 * Mib];
+            new Random(5).NextBytes(bytes);
+            await File.WriteAllBytesAsync(image, bytes);
+            var runner = new FakePartitionRunner("userdata", 8 * Mib) { Mounted = true };
+            var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
+            await new TransferService(twrp).WriteRawImageAsync("userdata", image, windowMiB: 1, "/data");
+            Assert.False(runner.Mounted);
+            Assert.Equal(bytes, runner.Partition.AsSpan(0, 2 * (int)Mib).ToArray());
         }
         finally
         {

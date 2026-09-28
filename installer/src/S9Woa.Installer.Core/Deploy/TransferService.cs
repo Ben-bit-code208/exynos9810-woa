@@ -43,7 +43,20 @@ public sealed class TransferService
         }
         if (mountToEnsureUnmounted is not null && await _twrp.IsMountedAsync(mountToEnsureUnmounted, ct).ConfigureAwait(false))
         {
-            throw new InvalidOperationException($"{mountToEnsureUnmounted} is mounted. Unmount it in TWRP before writing {partitionName}.");
+            log?.Report($"Unmounting {mountToEnsureUnmounted} before writing {partitionName}...");
+            try
+            {
+                await _twrp.UnmountAsync(mountToEnsureUnmounted, ct).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException)
+            {
+                // Fall through to the recheck, which produces the actionable error.
+            }
+            if (await _twrp.IsMountedAsync(mountToEnsureUnmounted, ct).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException(
+                    $"{mountToEnsureUnmounted} is still mounted. In TWRP, open Mount and uncheck Data, then retry writing {partitionName}.");
+            }
         }
 
         await _twrp.MakeStagingDirAsync(ct).ConfigureAwait(false);
