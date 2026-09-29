@@ -46,6 +46,30 @@ public sealed partial class WindowsMedia
             .Select(m => new WindowsImageEdition(int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture), m.Groups[2].Value.Trim()))
             .ToList();
 
+    [GeneratedRegex(@"^\s*Version\s*:\s*\d+\.\d+\.(\d+)\s*$", RegexOptions.Multiline)]
+    private static partial Regex VersionRegex();
+
+    [GeneratedRegex(@"^\s*ServicePack Build\s*:\s*(\d+)\s*$", RegexOptions.Multiline)]
+    private static partial Regex ServicePackBuildRegex();
+
+    /// <summary>
+    /// "build.revision" of one edition from <c>dism /Get-ImageInfo /Index:n</c>, e.g. <c>22631.2428</c>.
+    /// The line "Version: 10.0.26100..." DISM prints about itself has no space before the colon and is skipped.
+    /// </summary>
+    internal static string? ParseBuild(string dismIndexOutput)
+    {
+        var version = VersionRegex().Matches(dismIndexOutput).LastOrDefault();
+        var sp = ServicePackBuildRegex().Match(dismIndexOutput);
+        return version is null || !sp.Success ? null : $"{version.Groups[1].Value}.{sp.Groups[1].Value}";
+    }
+
+    public async Task<string?> GetBuildAsync(string installImage, int index, CancellationToken ct = default)
+    {
+        var r = await _runner.RunAsync(_dism, ["/Get-ImageInfo", $"/ImageFile:{installImage}", $"/Index:{index}", "/English"], Timeout, ct)
+            .ConfigureAwait(false);
+        return r.Succeeded ? ParseBuild(r.StdOut) : null;
+    }
+
     public async Task<IReadOnlyList<WindowsImageEdition>> GetEditionsAsync(string installImage, CancellationToken ct = default)
     {
         var r = await _runner.RunAsync(_dism, ["/Get-ImageInfo", $"/ImageFile:{installImage}", "/English"], Timeout, ct).ConfigureAwait(false);

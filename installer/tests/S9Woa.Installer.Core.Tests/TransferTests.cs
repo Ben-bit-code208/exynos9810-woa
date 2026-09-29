@@ -186,10 +186,10 @@ public class TransferTests
     }
 
     [Theory]
-    [InlineData("/sbin/mkfs.fat", "/sbin/mkfs.fat -F 32 -S 4096 -n SYSTEM /dev/block/by-name/SYSTEM")]
-    [InlineData("/system/bin/newfs_msdos", "/system/bin/newfs_msdos -F 32 -S 4096 -L SYSTEM /dev/block/by-name/SYSTEM")]
-    public void FormatsEspAsFat32With4KSectors(string tool, string expected) =>
-        Assert.Equal(expected, BootFilesService.FormatCommand(tool, "/dev/block/by-name/SYSTEM"));
+    [InlineData("/sbin/mkfs.fat", "/sbin/mkfs.fat -F 32 -S 4096 -s 1 -n ESP /dev/block/by-name/CACHE")]
+    [InlineData("/system/bin/newfs_msdos", "/system/bin/newfs_msdos -F 32 -S 4096 -c 1 -L ESP /dev/block/by-name/CACHE")]
+    public void FormatsEspAsFat32With4KSectorsAndClusters(string tool, string expected) =>
+        Assert.Equal(expected, BootFilesService.FormatCommand(tool, "/dev/block/by-name/CACHE", "ESP"));
 
     [Fact]
     public async Task RefusesImageLargerThanPartition()

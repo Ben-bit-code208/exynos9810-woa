@@ -96,12 +96,11 @@ public class OobeAndExportTests
     public void RoundsUpToMib(long input, long expected) => Assert.Equal(expected, RawImageExporter.RoundUpToMib(input));
 
     [Fact]
-    public void BcdRetargetUsesLocateDevice()
+    public void BcdTargetsThePhonePartitionsByGuid()
     {
-        var cmds = BootConfiguration.RetargetCommands(@"S:\EFI\Microsoft\Boot\BCD");
+        var cmds = BootConfiguration.SettingCommands(@"S:\EFI\Microsoft\Boot\BCD");
         var flat = cmds.Select(c => string.Join(' ', c)).ToList();
-        Assert.Contains(flat, c => c.Contains("{default} device locate=\\Windows", StringComparison.Ordinal));
-        Assert.Contains(flat, c => c.Contains("{default} osdevice locate=\\Windows", StringComparison.Ordinal));
+        Assert.DoesNotContain(flat, c => c.Contains("locate", StringComparison.Ordinal));
         Assert.Contains(flat, c => c.Contains("path \\Windows\\System32\\winload.efi", StringComparison.Ordinal));
         Assert.Contains(flat, c => c.EndsWith("{default} testsigning on", StringComparison.Ordinal));
         Assert.Contains(flat, c => c.EndsWith("{default} numproc 4", StringComparison.Ordinal));
@@ -109,5 +108,14 @@ public class OobeAndExportTests
         Assert.Contains(flat, c => c.EndsWith("{default} hypervisorlaunchtype off", StringComparison.Ordinal));
         Assert.Contains(flat, c => c.EndsWith("{default} bootstatuspolicy IgnoreAllFailures", StringComparison.Ordinal));
         Assert.All(flat, c => Assert.Contains(@"/store S:\EFI\Microsoft\Boot\BCD", c, StringComparison.Ordinal));
+
+        var script = BootConfiguration.DeviceScript(@"S:\EFI\Microsoft\Boot\BCD");
+        // Boot manager on CACHE; loader device and OS device on USERDATA; both on the Samsung disk.
+        Assert.Contains($"DiskSignature = '{PartitionMap.DiskGuid}'; PartitionIdentifier = '{PartitionMap.CacheGuid}'", script, StringComparison.Ordinal);
+        Assert.Contains($"DiskSignature = '{PartitionMap.DiskGuid}'; PartitionIdentifier = '{PartitionMap.UserdataGuid}'", script, StringComparison.Ordinal);
+        Assert.Contains("[uint32]0x11000001, [uint32]0x21000001", script, StringComparison.Ordinal);
+        Assert.Contains("Type = [uint32]0x16000060; Boolean = $false", script, StringComparison.Ordinal);
+        Assert.Contains("Type = [uint32]0x25000004; Integer = [uint64]0", script, StringComparison.Ordinal);
+        Assert.Contains(@"File = 'S:\EFI\Microsoft\Boot\BCD'", script, StringComparison.Ordinal);
     }
 }

@@ -31,11 +31,32 @@ public static class PartitionMap
     public const string RecoveryTarget = "RECOVERY";
 
     /// <summary>
-    /// Partition reformatted as the FAT32 EFI system partition (4096-byte sectors, matching
-    /// the UFS block size). It is Android's system partition on a stock phone; the UEFI
-    /// mounts any FAT partition and boots \EFI\Microsoft\Boot\bootmgfw.efi from it.
+    /// The EFI system partition the UEFI boots from: Android's CACHE (sda21, 600 MiB). It is
+    /// reformatted as FAT32 with 4096-byte sectors (the UFS block size) and holds
+    /// \EFI\Microsoft\Boot\bootmgfw.efi and the BCD, whose boot-manager device points here.
     /// </summary>
-    public const string EfiSystemPartition = "SYSTEM";
+    public const string EfiSystemPartition = "CACHE";
+
+    /// <summary>
+    /// Second FAT32 copy of the boot files on Android's SYSTEM partition (sda18). The reference
+    /// deployment kept both; firmware builds that only connect the SYSTEM-sized FAT volume use it.
+    /// </summary>
+    public const string SecondaryEfiSystemPartition = "SYSTEM";
+
+    /// <summary>
+    /// Holds the Android bootloader control block. <c>boot-recovery</c> there makes the bootloader
+    /// start RECOVERY; the UEFI writes it too when it gives up on Windows.
+    /// </summary>
+    public const string Misc = "MISC";
+
+    /// <summary>
+    /// Samsung derives GPT identifiers from names ("ANDROID MMC DISK", "ANDROID USERDATA", ...),
+    /// so they are the same on every star2lte. The BCD addresses Windows by them.
+    /// </summary>
+    public const string DiskGuid = "{52444e41-494f-2044-4d4d-43204449534b}";
+    public const string UserdataGuid = "{52444e41-494f-2044-5553-455244415441}";
+    public const string CacheGuid = "{52444e41-494f-2044-4341-434845000000}";
+    public const string SystemGuid = "{52444e41-494f-2044-5359-5354454d0000}";
 
     /// <summary>
     /// Byte geometry of the phone's main UFS unit and of USERDATA on it. The Windows image is
@@ -44,4 +65,5 @@ public static class PartitionMap
     public const long DiskBytes = 63_963_136_000;
     public const long WindowsOffset = 6_951_534_592;
     public const long WindowsBytes = 57_004_785_664;
+    public const long CacheBytes = 629_145_600;
 }

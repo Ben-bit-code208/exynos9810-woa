@@ -11,8 +11,11 @@ public interface ITwrpFlasher
     /// <summary>True if this flasher is usable (tool present) and a device is in Download mode.</summary>
     Task<bool> IsAvailableAsync(CancellationToken ct = default);
 
-    /// <summary>Flashes <paramref name="twrpImage"/> to RECOVERY. Does not reboot; TWRP must be booted immediately.</summary>
-    Task FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default);
+    /// <summary>
+    /// Flashes <paramref name="twrpImage"/> to RECOVERY. Returns true when the flasher also restarted
+    /// the phone straight into TWRP; false when the user has to boot it with the key combination.
+    /// </summary>
+    Task<bool> FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -53,7 +56,7 @@ public sealed class HeimdallTwrpFlasher : ITwrpFlasher
         }
     }
 
-    public async Task FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
+    public async Task<bool> FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
     {
         if (!File.Exists(twrpImage))
         {
@@ -67,6 +70,7 @@ public sealed class HeimdallTwrpFlasher : ITwrpFlasher
         }
         log?.Report("TWRP flashed. Boot into TWRP now (hold Volume Up + Bixby + Power) before Android restarts, "
             + "or the stock recovery will be restored.");
+        return false;
     }
 }
 
@@ -92,12 +96,12 @@ public sealed class TwrpFlashService
         return null;
     }
 
-    public async Task FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
+    public async Task<bool> FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
     {
         var flasher = await ResolveAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException(
                 "No phone in Download mode. Power it off, then hold Volume Down + Bixby + Power and press Volume Up at the warning.");
         log?.Report($"Using {flasher.Name} to flash TWRP.");
-        await flasher.FlashRecoveryAsync(twrpImage, log, ct).ConfigureAwait(false);
+        return await flasher.FlashRecoveryAsync(twrpImage, log, ct).ConfigureAwait(false);
     }
 }

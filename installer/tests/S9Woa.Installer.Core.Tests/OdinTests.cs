@@ -232,6 +232,33 @@ public class OdinTests
     }
 
     [Fact]
+    public void AsksTheBootloaderToStartTwrpAndReboots()
+    {
+        var pit = BuildPit(("BOOT", 10, 0, "boot.img"), ("RECOVERY", 11, 0, "recovery.img"), ("MISC", 15, 0, "misc.bin"));
+        var phone = new FakePhone(3, pit);
+        var image = WriteImage(3 * 1024 * 1024 + 7);
+        try
+        {
+            var restarted = Flasher(phone).Flash("COM4", image, null);
+
+            Assert.True(restarted);
+            Assert.Equal([11, 15], phone.Ends.Select(e => e.Id).Distinct());
+            var misc = phone.Ends.Single(e => e.Id == 15);
+            Assert.Equal(4096, misc.RealSize);
+            Assert.Equal(1, misc.Last);
+            var sent = phone.Received.ToArray();
+            var bcbStart = 4 * 1024 * 1024; // the RECOVERY image padded to whole 1 MiB parts
+            Assert.Equal("boot-recovery", System.Text.Encoding.ASCII.GetString(sent, bcbStart, 13));
+            Assert.Equal(3 * 1024 * 1024 + 7 + 4096, phone.TotalBytes);
+            Assert.Equal(["67/00", "67/01"], phone.Commands.TakeLast(2));
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
     public void ExplainsAnAuthenticationRefusal()
     {
         var phone = new FakePhone(3, PhonePit, failEndCode: -5);

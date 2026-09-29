@@ -24,10 +24,10 @@ public class FlasherTests
         public bool Available { get; init; }
         public bool Flashed { get; private set; }
         public Task<bool> IsAvailableAsync(CancellationToken ct = default) => Task.FromResult(Available);
-        public Task FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
+        public Task<bool> FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
         {
             Flashed = true;
-            return Task.CompletedTask;
+            return Task.FromResult(false);
         }
     }
 

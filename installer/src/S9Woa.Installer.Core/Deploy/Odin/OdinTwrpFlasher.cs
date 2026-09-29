@@ -120,7 +120,14 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
 
     public Task<bool> IsAvailableAsync(CancellationToken ct = default) => Task.FromResult(FindPort() is not null);
 
-    public async Task FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
+    /// <summary>
+    /// After flashing, also write Android's <c>boot-recovery</c> request to MISC and reboot, so the
+    /// bootloader starts TWRP by itself (Android never runs, so it cannot restore stock recovery).
+    /// The installer clears the request once TWRP is up.
+    /// </summary>
+    public bool RestartIntoRecovery { get; init; } = true;
+
+    public async Task<bool> FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
     {
         if (!File.Exists(twrpImage))
         {
@@ -129,10 +136,11 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
         var port = FindPort() ?? throw new InvalidOperationException("No phone in Download mode.");
         ct.ThrowIfCancellationRequested();
         // Not cancellable once started: stopping mid-write would leave RECOVERY half written.
-        await Task.Run(() => Flash(port, twrpImage, log), CancellationToken.None).ConfigureAwait(false);
+        return await Task.Run(() => Flash(port, twrpImage, log), CancellationToken.None).ConfigureAwait(false);
     }
 
-    internal void Flash(string port, string twrpImage, IProgress<string>? log)
+    /// <returns>True when the phone was restarted into TWRP.</returns>
+    internal bool Flash(string port, string twrpImage, IProgress<string>? log)
     {
         log?.Report($"Connecting to Download mode on {port}...");
         using var transport = _open(port);
@@ -143,11 +151,13 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
         var pit = Pit.Parse(odin.DumpPit());
         var recovery = Pit.Find(pit, "RECOVERY")
             ?? throw new OdinException($"The phone's partition table ({pit.Count} partitions) has no RECOVERY partition.");
+        var misc = RestartIntoRecovery ? Pit.Find(pit, "MISC") : null;
         log?.Report($"RECOVERY is partition {recovery.Identifier} ({recovery.FlashFileName}).");
 
         using var image = File.OpenRead(twrpImage);
         var length = image.Length;
-        odin.SetTotalBytes(length);
+        var bcb = BootRouteService.BootRecoveryMessage();
+        odin.SetTotalBytes(length + (misc is null ? 0 : bcb.Length));
         log?.Report($"Flashing {Path.GetFileName(twrpImage)} ({length / 1024} KiB) to RECOVERY...");
         var lastDecile = -1;
         odin.FlashPartition(image, length, recovery, sent =>
@@ -159,6 +169,11 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
                 log?.Report($"  {decile * 10}%");
             }
         });
+        if (misc is not null)
+        {
+            log?.Report("Asking the bootloader to start TWRP next (MISC boot-recovery request)...");
+            odin.FlashPartition(new MemoryStream(bcb), bcb.Length, misc);
+        }
         try
         {
             odin.EndSession();
@@ -170,6 +185,20 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
             // flashed (RECOVERY)". The image was not accepted.
             throw new OdinException($"The phone refused TWRP when the session ended ({e.Message}). {OdinSession.OfficialBinariesOnlyHelp}");
         }
-        log?.Report("TWRP flashed. The phone stays in Download mode until you restart it.");
+        if (misc is null)
+        {
+            log?.Report("TWRP flashed. The phone stays in Download mode until you restart it.");
+            return false;
+        }
+        log?.Report("TWRP flashed. Restarting the phone into TWRP...");
+        try
+        {
+            odin.Reboot();
+        }
+        catch (Exception e) when (e is OdinException or TimeoutException or IOException)
+        {
+            // The phone often drops USB before answering the reboot request.
+        }
+        return true;
     }
 }

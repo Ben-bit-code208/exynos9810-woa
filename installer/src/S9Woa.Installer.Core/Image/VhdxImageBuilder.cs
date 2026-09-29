@@ -6,14 +6,17 @@ using S9Woa.Installer.Core.Processes;
 namespace S9Woa.Installer.Core.Image;
 
 /// <summary>Outputs of a full image build, ready for the transfer stage.</summary>
-public sealed record BuiltImage(string WindowsImage, long WindowsBytes, string WindowsSha256, string EspDirectory);
+/// <param name="LoaderSha256">SHA-256 of the image's <c>winload.efi</c>; the UEFI must be built for exactly this loader.</param>
+/// <param name="KernelSha256">SHA-256 of the image's <c>ntoskrnl.exe</c>; likewise pinned by the UEFI.</param>
+public sealed record BuiltImage(string WindowsImage, long WindowsBytes, string WindowsSha256, string EspDirectory,
+    string LoaderSha256 = "", string KernelSha256 = "");
 
 /// <summary>
 /// Builds the Windows volume for the phone inside a VHDX that replicates the phone's main
 /// UFS unit: a 4Kn disk of the same size with the NTFS Windows partition at exactly the
 /// offset and size of USERDATA (plus a small ESP and MSR in the unused space before it).
 /// Windows is applied, drivers injected, the slim profile run, the OOBE answer file
-/// written and <c>bcdboot</c> laid down; the BCD is retargeted to locate <c>\Windows</c>.
+/// written and <c>bcdboot</c> laid down; the BCD is pointed at the phone's partitions.
 /// The VHDX is then detached and re-attached read-only, and the Windows partition is read
 /// straight off the virtual disk, so the exported image is a cleanly unmounted volume whose
 /// NTFS geometry matches USERDATA byte for byte. The ESP files are copied out separately.
@@ -105,6 +108,7 @@ public sealed class VhdxImageBuilder
         var windowsImage = Path.Combine(outputDir, "windows.img");
         var espOut = Path.Combine(outputDir, "esp");
 
+        string loaderSha, kernelSha;
         log?.Report("Creating a virtual disk that mirrors the phone's storage...");
         await RunScript(CreateScript(vhdxPath), ct).ConfigureAwait(false);
         try
@@ -122,7 +126,9 @@ public sealed class VhdxImageBuilder
             {
                 throw new InvalidOperationException($"bcdboot failed: {(r.StdErr + r.StdOut).Trim()}");
             }
-            await _boot.RetargetToLocateAsync(Path.Combine(esp + "\\", @"EFI\Microsoft\Boot\BCD"), log, ct).ConfigureAwait(false);
+            await _boot.ConfigureForPhoneAsync(Path.Combine(esp + "\\", @"EFI\Microsoft\Boot\BCD"), log, ct).ConfigureAwait(false);
+            loaderSha = await Sha256Async(Path.Combine(winRoot, @"Windows\System32\winload.efi"), ct).ConfigureAwait(false);
+            kernelSha = await Sha256Async(Path.Combine(winRoot, @"Windows\System32\ntoskrnl.exe"), ct).ConfigureAwait(false);
 
             log?.Report("Copying the EFI boot files...");
             if (Directory.Exists(espOut))
@@ -147,12 +153,18 @@ public sealed class VhdxImageBuilder
             var (bytes, sha) = await _exporter.ExportAsync(source,
                 new PartitionExtent(PartitionMap.WindowsOffset, PartitionMap.WindowsBytes), windowsImage, log, ct).ConfigureAwait(false);
             log?.Report("Windows image ready.");
-            return new BuiltImage(windowsImage, bytes, sha, espOut);
+            return new BuiltImage(windowsImage, bytes, sha, espOut, loaderSha, kernelSha);
         }
         finally
         {
             await RunScript(DetachScript(vhdxPath), CancellationToken.None).ConfigureAwait(false);
         }
+    }
+
+    private static async Task<string> Sha256Async(string file, CancellationToken ct)
+    {
+        await using var s = File.OpenRead(file);
+        return Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(s, ct).ConfigureAwait(false)).ToLowerInvariant();
     }
 
     internal static void CopyTree(string source, string destination)

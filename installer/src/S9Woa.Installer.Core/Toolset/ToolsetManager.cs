@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 using System.Text.Json;
+using S9Woa.Installer.Core.Image;
 using S9Woa.Installer.Core.Processes;
 
 namespace S9Woa.Installer.Core.Toolset;
@@ -80,6 +81,26 @@ public sealed class ToolsetManager
     public string UefiPayload => Path.Combine(Paths.PayloadDirectory, "uefi.img");
     public string DriversPayload => Path.Combine(Paths.PayloadDirectory, "drivers");
 
+    /// <summary>UEFI images with their <c>firmware.json</c> (one build per supported Windows build).</summary>
+    public string UefiCatalogDirectory => Path.Combine(Paths.PayloadDirectory, "uefi");
+
+    /// <summary>Kernel modules for the TWRP kernel (e.g. <c>rwd1_ack.ko</c>, which clears the recovery record).</summary>
+    public string TwrpModulesDirectory => Path.Combine(Paths.PayloadDirectory, "twrp-modules");
+
+    public FirmwareCatalog? LoadFirmwareCatalog() => FirmwareCatalog.Load(UefiCatalogDirectory);
+
+    private FirmwareCatalog? LoadCatalogOrNull()
+    {
+        try
+        {
+            return LoadFirmwareCatalog();
+        }
+        catch (Exception e) when (e is InvalidDataException or System.Text.Json.JsonException or IOException)
+        {
+            return null;
+        }
+    }
+
     public void SaveConfig() => Config.Save(Paths.DataDirectory);
 
     public IReadOnlyDictionary<string, ToolStatus> DetectAll() =>
@@ -116,6 +137,11 @@ public sealed class ToolsetManager
                     (Path.Combine(Paths.BundledPayloadDirectory, "recovery.img"), BootImage.RecoveryPartitionBytes))
                     ?? ToolStatus.Missing("Open the TWRP page, download the latest twrp-*-star2lte.img, then choose it here.");
             case Tools.Uefi:
+                if (LoadCatalogOrNull() is { } catalog && catalog.Present(BootImage.BootPartitionBytes) is { Count: > 0 } present)
+                {
+                    return ToolStatus.Ready(UefiCatalogDirectory,
+                        $"{present.Count} UEFI build(s), for Windows {string.Join(", ", present.Select(i => i.Windows))}");
+                }
                 return Payload(
                     (UefiPayload, BootImage.BootPartitionBytes),
                     (Path.Combine(Paths.BundledPayloadDirectory, "uefi.img"), BootImage.BootPartitionBytes))
@@ -263,12 +289,31 @@ public sealed class ToolsetManager
         var results = new Dictionary<string, ToolStatus>();
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
 
+        var catalogFile = Directory.EnumerateFiles(folder, FirmwareCatalog.FileName, options).FirstOrDefault();
         var uefi = Directory.EnumerateFiles(folder, "*.img", options)
             .Where(f => Path.GetFileName(f).Contains("uefi", StringComparison.OrdinalIgnoreCase))
             .Where(f => BootImage.ValidateUefi(f) is null)
             .OrderByDescending(File.GetLastWriteTimeUtc)
             .FirstOrDefault();
-        if (uefi is null)
+        if (catalogFile is not null)
+        {
+            try
+            {
+                var catalog = FirmwareCatalog.Load(Path.GetDirectoryName(catalogFile)!)!;
+                if (Directory.Exists(UefiCatalogDirectory))
+                {
+                    Directory.Delete(UefiCatalogDirectory, recursive: true);
+                }
+                catalog.CopyTo(UefiCatalogDirectory);
+                log?.Report($"Using UEFI builds for Windows {catalog.SupportedBuilds} from {catalogFile}");
+                results[Tools.Uefi] = Detect(Tools.Uefi);
+            }
+            catch (InvalidDataException e)
+            {
+                results[Tools.Uefi] = new ToolStatus(ToolState.Error, e.Message);
+            }
+        }
+        else if (uefi is null)
         {
             results[Tools.Uefi] = new ToolStatus(ToolState.Error, $"No UEFI boot image (*uefi*.img) found under {folder}.");
         }
@@ -276,6 +321,17 @@ public sealed class ToolsetManager
         {
             log?.Report($"Using UEFI image {uefi}");
             results[Tools.Uefi] = CopyPayload(uefi, UefiPayload, null, Tools.Uefi);
+        }
+
+        var modules = Directory.EnumerateFiles(folder, "*.ko", options).ToList();
+        if (modules.Count > 0)
+        {
+            Directory.CreateDirectory(TwrpModulesDirectory);
+            foreach (var module in modules)
+            {
+                File.Copy(module, Path.Combine(TwrpModulesDirectory, Path.GetFileName(module)), overwrite: true);
+            }
+            log?.Report($"Using {modules.Count} TWRP kernel module(s): {string.Join(", ", modules.Select(Path.GetFileName))}");
         }
 
         var packages = BuiltDriverPackages(folder);
