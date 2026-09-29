@@ -25,8 +25,11 @@ public sealed partial class TwrpClient
         _runner = runner;
     }
 
-    /// <summary>Where partition backups and image payloads are staged on the device.</summary>
+    /// <summary>Where partition backups are staged on the device (the SD card).</summary>
     public string SdStagingDir { get; init; } = "/external_sd/s9woa";
+
+    /// <summary>TWRP's tmpfs: image chunks are staged here, in RAM, so writes never wait on the SD card.</summary>
+    public string RamStagingDir { get; init; } = "/tmp/s9woa";
 
     public const string ByName = "/dev/block/by-name";
 
@@ -124,9 +127,9 @@ public sealed partial class TwrpClient
     public Task DdAsync(string source, string destination, CancellationToken ct = default) =>
         ShellCheckedAsync($"dd if={source} of={destination} bs=4194304 conv=fsync", Long, ct);
 
-    /// <summary>Writes a 1-MiB-aligned window of an SD file into a partition at <paramref name="seekMiB"/>.</summary>
-    public Task WritePartitionWindowAsync(string sdFile, string name, long seekMiB, long countMiB, CancellationToken ct = default) =>
-        ShellCheckedAsync($"dd if={sdFile} of={ByName}/{name} bs=1048576 seek={seekMiB} count={countMiB} conv=notrunc,fsync", Long, ct);
+    /// <summary>Writes a 1-MiB-aligned device file into a partition at <paramref name="seekMiB"/>.</summary>
+    public Task WritePartitionWindowAsync(string deviceFile, string name, long seekMiB, long countMiB, CancellationToken ct = default) =>
+        ShellCheckedAsync($"dd if={deviceFile} of={ByName}/{name} bs=1048576 seek={seekMiB} count={countMiB} conv=notrunc,fsync", Long, ct);
 
     /// <summary>Fills a 1-MiB-aligned window of a partition with zeros on the phone (no USB transfer).</summary>
     public Task ZeroPartitionWindowAsync(string name, long seekMiB, long countMiB, CancellationToken ct = default) =>

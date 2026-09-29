@@ -23,6 +23,7 @@ public sealed partial class InstallPage : Page, IWizardStep
         _items = StageCatalog.All.Select(s => new StageItem(s) { Status = AppServices.State.StatusOf(s.Id) }).ToList();
         Timeline.ItemsSource = _items;
         ExperimentalToggle.IsOn = AppServices.ExperimentalEnabled;
+        VerifyToggle.IsOn = AppServices.VerifyWrites;
         var dev = AppServices.CurrentDevice;
         ReviewPhone.Text = dev is null ? "Not connected" : $"{dev.Model} · {dev.Bootloader}";
         ReviewMedia.Text = AppServices.MediaPath is null ? "Not selected" : Path.GetFileName(AppServices.MediaPath);
@@ -69,6 +70,7 @@ public sealed partial class InstallPage : Page, IWizardStep
         _running = running;
         RunningPanel.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         ExperimentalToggle.IsEnabled = !running;
+        VerifyToggle.IsEnabled = !running;
         HeadlineText.Text = running ? "Installing Windows" : HeadlineText.Text;
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -462,14 +464,16 @@ public sealed partial class InstallPage : Page, IWizardStep
             await twrp.UnmountAsync("/sdcard", ct);
         }
         await new TransferService(twrp).WriteRawImageAsync(PartitionMap.WindowsTarget, AppServices.WindowsImagePath,
-            windowMiB: 64, mountToEnsureUnmounted: "/data", log: log, ct: ct);
+            new RawWriteOptions { Verify = AppServices.VerifyWrites }, mountToEnsureUnmounted: "/data", log: log, ct: ct);
 
         if (Directory.Exists(AppServices.EspDirectory))
         {
             log.Report("Writing the Windows boot files...");
             await new BootFilesService(twrp).WriteAsync(AppServices.EspDirectory, log, ct);
         }
-        return (true, "Windows and boot files written and verified on the phone.");
+        return (true, AppServices.VerifyWrites
+            ? "Windows and boot files written and verified on the phone."
+            : "Windows and boot files written to the phone.");
     }
 
     private static async Task<(bool, string)> RunUefiAsync(IProgress<string> log, CancellationToken ct)
@@ -484,7 +488,8 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             return (false, "The UEFI image is not set up. Add it on the Set up page, then press Resume.");
         }
-        await new TransferService(twrp).WriteWholePartitionAsync(PartitionMap.UefiTarget, AppServices.UefiImagePath, log, ct);
+        await new TransferService(twrp).WriteWholePartitionAsync(PartitionMap.UefiTarget, AppServices.UefiImagePath, log, ct,
+            verify: AppServices.VerifyWrites);
         return (true, "UEFI installed to BOOT. RECOVERY keeps TWRP.");
     }
 
@@ -522,6 +527,15 @@ public sealed partial class InstallPage : Page, IWizardStep
 
     private void OnExperimentalToggled(object sender, RoutedEventArgs e) =>
         AppServices.ExperimentalEnabled = ExperimentalToggle.IsOn;
+
+    private void OnVerifyToggled(object sender, RoutedEventArgs e)
+    {
+        if (AppServices.VerifyWrites != VerifyToggle.IsOn)
+        {
+            AppServices.VerifyWrites = VerifyToggle.IsOn;
+            AppServices.SaveState();
+        }
+    }
 
     private void OnOpenLogs(object sender, RoutedEventArgs e)
     {

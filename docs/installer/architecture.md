@@ -119,9 +119,18 @@ seams so it is unit-tested without hardware:
   instance). `OdinTwrpFlasher` looks up RECOVERY in the phone's PIT by name,
   flashes TWRP and leaves the phone in Download mode for the TWRP key combo.
   `Pit` parses the partition table. A simulated bootloader covers it in tests.
-- `TransferService` — writes prepared images through TWRP with verification: the
-  raw Windows volume to USERDATA in 1-MiB-aligned windows (each read back and
-  hashed), and whole small images (UEFI) to BOOT. It refuses a destination
+- `TransferService` — writes prepared images through TWRP. For the raw Windows
+  volume it reads the NTFS `$Bitmap` (`Image/NtfsAllocation`) and writes only the
+  MiBs that hold used clusters (plus the first and last MiB, for the boot sector
+  and its backup), which is about 10 GiB of a 53 GiB Core volume.
+  `TransferPlanner` groups them into chunks of up to 128 MiB; each is staged in
+  TWRP's RAM (`/tmp`) rather than on the SD card, and the next chunk crosses USB
+  while the current one is written. With *Verify every write* on (the default),
+  each chunk is read back and its SHA-256 compared with the source. Skipping
+  free space is safe because NTFS never reads unallocated clusters: a sparse
+  copy and a full copy of the same image give identical `chkdsk` results. If the
+  image is not NTFS, everything is written, with all-zero chunks filled on the
+  phone. Small images (UEFI) go to BOOT whole. The service refuses a destination
   smaller than the image and refuses to write a mounted target.
 - `BootFilesService` — mounts the phone's FAT EFI system partition and copies the
   built ESP tree onto it (plus a `/cache` BCD copy the firmware also consults).

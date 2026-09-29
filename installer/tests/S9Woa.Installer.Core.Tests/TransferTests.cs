@@ -26,6 +26,8 @@ public class TransferTests
         }
 
         public int Pushes { get; private set; }
+        public int Hashes { get; private set; }
+        public List<string> PushTargets { get; } = [];
 
         public Task<ProcessResult> RunAsync(string fileName, IReadOnlyList<string> arguments, TimeSpan timeout,
             CancellationToken cancellationToken = default)
@@ -34,6 +36,7 @@ public class TransferTests
             if (verb == "push")
             {
                 _sd[arguments[4]] = File.ReadAllBytes(arguments[3]);
+                PushTargets.Add(arguments[4]);
                 Pushes++;
                 return Ok("pushed");
             }
@@ -90,6 +93,7 @@ public class TransferTests
             }
             if (cmd.StartsWith($"dd if={dev}", StringComparison.Ordinal) && cmd.Contains("sha256sum", StringComparison.Ordinal))
             {
+                Hashes++;
                 var skip = long.Parse(Between(cmd, "skip=", " "));
                 var count = long.Parse(Between(cmd, "count=", " "));
                 var slice = Partition.AsSpan((int)(skip * Mib), (int)(count * Mib)).ToArray();
@@ -127,7 +131,7 @@ public class TransferTests
 
             var runner = new FakePartitionRunner("userdata", 8 * Mib);
             var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
-            await new TransferService(twrp).WriteRawImageAsync("userdata", image, windowMiB: 2, "/data");
+            await new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions { ChunkMiB = 2 }, "/data");
 
             Assert.Equal(bytes, runner.Partition.AsSpan(0, 5 * (int)Mib).ToArray());
         }
@@ -152,7 +156,7 @@ public class TransferTests
             var runner = new FakePartitionRunner("userdata", 6 * Mib);
             new Random(11).NextBytes(runner.Partition);
             var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
-            await new TransferService(twrp).WriteRawImageAsync("USERDATA", image, windowMiB: 1);
+            await new TransferService(twrp).WriteRawImageAsync("USERDATA", image, new RawWriteOptions { ChunkMiB = 1 });
 
             Assert.Equal(bytes, runner.Partition.AsSpan(0, 4 * (int)Mib).ToArray());
             Assert.Equal(2, runner.Pushes); // only the two data windows crossed USB
@@ -173,7 +177,7 @@ public class TransferTests
             var runner = new FakePartitionRunner("userdata", 8 * Mib);
             var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                new TransferService(twrp).WriteRawImageAsync("system", image, 1));
+                new TransferService(twrp).WriteRawImageAsync("system", image, new RawWriteOptions()));
         }
         finally
         {
@@ -197,7 +201,7 @@ public class TransferTests
             var runner = new FakePartitionRunner("userdata", 2 * Mib);
             var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                new TransferService(twrp).WriteRawImageAsync("userdata", image, 1));
+                new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions()));
         }
         finally
         {
@@ -215,7 +219,7 @@ public class TransferTests
             var runner = new FakePartitionRunner("userdata", 8 * Mib) { Mounted = true, StickyMount = true };
             var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
             await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                new TransferService(twrp).WriteRawImageAsync("userdata", image, 1, "/data"));
+                new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions(), "/data"));
         }
         finally
         {
@@ -234,7 +238,7 @@ public class TransferTests
             await File.WriteAllBytesAsync(image, bytes);
             var runner = new FakePartitionRunner("userdata", 8 * Mib) { Mounted = true };
             var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
-            await new TransferService(twrp).WriteRawImageAsync("userdata", image, windowMiB: 1, "/data");
+            await new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions { ChunkMiB = 1 }, "/data");
             Assert.False(runner.Mounted);
             Assert.Equal(bytes, runner.Partition.AsSpan(0, 2 * (int)Mib).ToArray());
         }
@@ -242,6 +246,110 @@ public class TransferTests
         {
             File.Delete(image);
         }
+    }
+
+    [Fact]
+    public async Task SkipsNtfsFreeSpaceAndStagesInRam()
+    {
+        var image = Path.GetTempFileName();
+        try
+        {
+            // Used: MiB 0 (boot, MFT, bitmap) and clusters 1024-1029 (MiB 4); the last MiB always goes.
+            var bytes = NtfsTestImage.Build(8, [(1024, 6)]);
+            await File.WriteAllBytesAsync(image, bytes);
+
+            var runner = new FakePartitionRunner("userdata", 10 * Mib);
+            new Random(12).NextBytes(runner.Partition);
+            var stale = runner.Partition.ToArray();
+            var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
+            var log = new List<string>();
+            await new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions { ChunkMiB = 2 }, log: new SyncProgress(log.Add));
+
+            foreach (var mib in new[] { 0, 4, 7 })
+            {
+                Assert.Equal(bytes.AsSpan(mib * (int)Mib, (int)Mib).ToArray(), runner.Partition.AsSpan(mib * (int)Mib, (int)Mib).ToArray());
+            }
+            foreach (var mib in new[] { 1, 2, 3, 5, 6 })
+            {
+                Assert.Equal(stale.AsSpan(mib * (int)Mib, (int)Mib).ToArray(), runner.Partition.AsSpan(mib * (int)Mib, (int)Mib).ToArray());
+            }
+            Assert.Equal(3, runner.Pushes);
+            Assert.All(runner.PushTargets, t => Assert.StartsWith("/tmp/s9woa/slot", t, StringComparison.Ordinal));
+            Assert.Contains(log, l => l.Contains("Writing 3 MiB of 8 MiB", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
+    public async Task VerificationCanBeTurnedOff()
+    {
+        var image = Path.GetTempFileName();
+        try
+        {
+            var bytes = new byte[6 * Mib];
+            new Random(13).NextBytes(bytes);
+            await File.WriteAllBytesAsync(image, bytes);
+            var runner = new FakePartitionRunner("userdata", 8 * Mib);
+            var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
+
+            await new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions { ChunkMiB = 2, Verify = false });
+            Assert.Equal(bytes, runner.Partition.AsSpan(0, 6 * (int)Mib).ToArray());
+            Assert.Equal(0, runner.Hashes);
+
+            await new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions { ChunkMiB = 2 });
+            Assert.Equal(3, runner.Hashes);
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
+    public async Task AlternatesTwoStagingSlotsAcrossManyChunks()
+    {
+        var image = Path.GetTempFileName();
+        try
+        {
+            var bytes = new byte[7 * Mib];
+            new Random(14).NextBytes(bytes);
+            await File.WriteAllBytesAsync(image, bytes);
+            var runner = new FakePartitionRunner("userdata", 7 * Mib);
+            var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
+            await new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions { ChunkMiB = 1 });
+
+            Assert.Equal(bytes, runner.Partition);
+            Assert.Equal(["/tmp/s9woa/slot0.bin", "/tmp/s9woa/slot1.bin"], runner.PushTargets.Distinct().Order());
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Theory]
+    [InlineData(10, 4, "0+1 3+4 7+1 9+1")]
+    [InlineData(5, 2, "0+2 2+2 4+1")]
+    public void PlansChunksAroundTheNeededMiBs(long total, long chunk, string expected)
+    {
+        Func<long, bool>? needed = total == 10 ? m => m is >= 3 and <= 7 : null;
+        var plan = TransferPlanner.Plan(total, chunk, needed);
+        Assert.Equal(expected, string.Join(' ', plan.Select(c => $"{c.OffsetMiB}+{c.CountMiB}")));
+    }
+
+    [Fact]
+    public void ReportsRateAndTimeLeft()
+    {
+        var text = TransferService.Progress("USERDATA", 2048, 10240, 0, verified: true, TimeSpan.FromSeconds(64));
+        Assert.Equal("USERDATA: 2.0 of 10.0 GiB written and verified, 34 MB/s, about 5 min left", text);
+    }
+
+    private sealed class SyncProgress(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
     }
 
     [Fact]

@@ -46,7 +46,7 @@ public static class StageCatalog
         new("twrp", "Install TWRP", "Flash TWRP to RECOVERY from Download mode and boot it once.", StageAvailability.Experimental, Destructive: true),
         new("backup", "Back up the phone", "Copy EFS, modem calibration and the partition table to this PC before anything else is written.", StageAvailability.Experimental),
         new("partition", "Prepare partitions", "Locate the target partitions by name and verify the validated layout.", StageAvailability.Experimental, Destructive: true),
-        new("transfer", "Copy Windows to the phone", "Write the image and boot files through TWRP, verifying every block.", StageAvailability.Experimental, Destructive: true),
+        new("transfer", "Copy Windows to the phone", "Write the used part of the image and the boot files through TWRP, optionally verifying every block.", StageAvailability.Experimental, Destructive: true),
         new("uefi", "Install UEFI", "Flash the UEFI boot image to BOOT. RECOVERY keeps TWRP.", StageAvailability.Experimental, Destructive: true),
         new("firstboot", "First boot", "Boot Windows and finish setup.", StageAvailability.Experimental),
     ];
@@ -76,6 +76,9 @@ public sealed class InstallState
     public string? MediaPath { get; set; }
     public string? SlimProfile { get; set; }
     public string? AccountName { get; set; }
+
+    /// <summary>Read back and hash every block written to the phone (null = default, on).</summary>
+    public bool? VerifyWrites { get; set; }
     public Dictionary<string, StageRecord> Stages { get; set; } = [];
 
     public static string DefaultDirectory =>

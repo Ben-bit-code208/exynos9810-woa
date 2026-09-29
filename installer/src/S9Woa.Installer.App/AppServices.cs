@@ -73,6 +73,9 @@ internal static class AppServices
     /// <summary>Opt-in to run stages that are automated but not yet validated on the reference device.</summary>
     public static bool ExperimentalEnabled { get; set; }
 
+    /// <summary>Read back and hash every block written to the phone. Slower; on unless turned off.</summary>
+    public static bool VerifyWrites { get; set; } = State.VerifyWrites ?? true;
+
     /// <summary>In-Windows (on the phone) Restart-to-TWRP over the UFS vendor ticket.</summary>
     public static RecoveryTicketService RecoveryTickets { get; } =
         new(new ScsiPassThroughTransportFactory(), new ShutdownExeRestart());
@@ -103,6 +106,7 @@ internal static class AppServices
         State.MediaPath = MediaPath;
         State.SlimProfile = Profile.ToString();
         State.AccountName = Unattend.Username;
+        State.VerifyWrites = VerifyWrites;
         State.DeviceSerial = CurrentDevice?.Serial ?? State.DeviceSerial;
         State.DeviceBootloader = CurrentDevice?.Bootloader ?? State.DeviceBootloader;
         State.Save(DataDirectory);
