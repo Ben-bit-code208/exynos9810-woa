@@ -56,14 +56,18 @@ public sealed partial class WindowsMedia
         return ParseImageInfo(r.StdOut);
     }
 
-    /// <summary>Prefer Pro, then Home, else the first edition.</summary>
+    /// <summary>
+    /// Prefer IoT Enterprise (the edition validated on the phone), then Pro, then Home, else the first.
+    /// </summary>
     public static WindowsImageEdition ChooseEdition(IReadOnlyList<WindowsImageEdition> editions)
     {
         if (editions.Count == 0)
         {
             throw new InvalidOperationException("The media contains no Windows editions.");
         }
-        return editions.FirstOrDefault(e => e.Name.Contains("Pro", StringComparison.OrdinalIgnoreCase) && !e.Name.Contains("Education", StringComparison.OrdinalIgnoreCase))
+        return editions.FirstOrDefault(e => e.Name.Contains("IoT Enterprise", StringComparison.OrdinalIgnoreCase)
+                                            && !e.Name.Contains("Subscription", StringComparison.OrdinalIgnoreCase))
+            ?? editions.FirstOrDefault(e => e.Name.Contains("Pro", StringComparison.OrdinalIgnoreCase) && !e.Name.Contains("Education", StringComparison.OrdinalIgnoreCase))
             ?? editions.FirstOrDefault(e => e.Name.Contains("Home", StringComparison.OrdinalIgnoreCase))
             ?? editions[0];
     }

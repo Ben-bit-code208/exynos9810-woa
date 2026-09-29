@@ -31,6 +31,12 @@ public class ImageBuilderTests
         Assert.Equal(6, WindowsMedia.ChooseEdition(editions).Index);
         Assert.Equal(1, WindowsMedia.ChooseEdition([editions[0]]).Index);
         Assert.Throws<InvalidOperationException>(() => WindowsMedia.ChooseEdition([]));
+
+        // The validated IoT Enterprise 23H2 media: Enterprise at 1, IoT Enterprise at 2.
+        var iot = WindowsMedia.ParseImageInfo(
+            "Index : 1\r\nName : Windows 11 Enterprise\r\nDescription : x\r\n\r\n" +
+            "Index : 2\r\nName : Windows 11 IoT Enterprise\r\nDescription : x\r\n");
+        Assert.Equal(2, WindowsMedia.ChooseEdition(iot).Index);
     }
 
     [Fact]

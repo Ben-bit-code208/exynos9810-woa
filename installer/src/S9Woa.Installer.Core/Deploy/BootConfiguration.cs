@@ -20,13 +20,25 @@ public sealed class BootConfiguration
     public BootConfiguration(IProcessRunner runner, string? system32 = null) =>
         (_runner, _bcdedit) = (runner, Path.Combine(system32 ?? Environment.GetFolderPath(Environment.SpecialFolder.System), "bcdedit.exe"));
 
-    /// <summary>The bcdedit invocations that make <paramref name="storePath"/> boot by locating \Windows.</summary>
+    /// <summary>
+    /// The bcdedit invocations that make <paramref name="storePath"/> boot by locating \Windows,
+    /// with the loader settings of the phone's validated full-OS entry: test signing (the phone
+    /// drivers are test-signed), four processors, no VSM or hypervisor, HAL detection, and
+    /// ignoring boot-status failures so an unclean shutdown does not stop at a recovery prompt.
+    /// </summary>
     internal static IReadOnlyList<IReadOnlyList<string>> RetargetCommands(string storePath) =>
     [
         ["/store", storePath, "/set", "{default}", "device", "locate=\\Windows"],
         ["/store", storePath, "/set", "{default}", "osdevice", "locate=\\Windows"],
         ["/store", storePath, "/set", "{default}", "path", "\\Windows\\System32\\winload.efi"],
         ["/store", storePath, "/set", "{default}", "systemroot", "\\Windows"],
+        ["/store", storePath, "/set", "{default}", "testsigning", "on"],
+        ["/store", storePath, "/set", "{default}", "nointegritychecks", "off"],
+        ["/store", storePath, "/set", "{default}", "numproc", "4"],
+        ["/store", storePath, "/set", "{default}", "vsmlaunchtype", "off"],
+        ["/store", storePath, "/set", "{default}", "hypervisorlaunchtype", "off"],
+        ["/store", storePath, "/set", "{default}", "detecthal", "on"],
+        ["/store", storePath, "/set", "{default}", "bootstatuspolicy", "IgnoreAllFailures"],
         ["/store", storePath, "/set", "{bootmgr}", "device", "locate=\\EFI\\Microsoft\\Boot\\bootmgfw.efi"],
     ];
 

@@ -103,6 +103,11 @@ public class OobeAndExportTests
         Assert.Contains(flat, c => c.Contains("{default} device locate=\\Windows", StringComparison.Ordinal));
         Assert.Contains(flat, c => c.Contains("{default} osdevice locate=\\Windows", StringComparison.Ordinal));
         Assert.Contains(flat, c => c.Contains("path \\Windows\\System32\\winload.efi", StringComparison.Ordinal));
+        Assert.Contains(flat, c => c.EndsWith("{default} testsigning on", StringComparison.Ordinal));
+        Assert.Contains(flat, c => c.EndsWith("{default} numproc 4", StringComparison.Ordinal));
+        Assert.Contains(flat, c => c.EndsWith("{default} vsmlaunchtype off", StringComparison.Ordinal));
+        Assert.Contains(flat, c => c.EndsWith("{default} hypervisorlaunchtype off", StringComparison.Ordinal));
+        Assert.Contains(flat, c => c.EndsWith("{default} bootstatuspolicy IgnoreAllFailures", StringComparison.Ordinal));
         Assert.All(flat, c => Assert.Contains(@"/store S:\EFI\Microsoft\Boot\BCD", c, StringComparison.Ordinal));
     }
 }
