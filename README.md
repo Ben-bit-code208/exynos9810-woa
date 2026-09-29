@@ -70,7 +70,7 @@ locked until everything below is ready, and the choices are remembered in
 | Heimdall (optional) | winget `BenjaminDobell.Heimdall`; only a fallback, used if the Download-mode interface has been switched to WinUSB |
 | Zadig (optional) | winget `akeo.ie.Zadig`; only for the Heimdall fallback |
 | Samsung USB driver | You download Samsung's installer; Setup runs it only if it is validly signed by Samsung Electronics |
-| TWRP for star2lte | Setup opens the official TWRP page; you choose the downloaded `twrp-*-star2lte.img` (checked for the model name, the boot-image header and the RECOVERY size). Any star2lte recovery image that fits RECOVERY works, e.g. a re-skinned build such as a WinRE-look TWRP you made for your own device |
+| TWRP for star2lte | Setup opens the official TWRP page; you choose the downloaded `twrp-3.7.0_9-0-star2lte.img` (checked for the model name, the boot-image header and the RECOVERY size). The installer re-skins it on your PC into a WinRE-look recovery and flashes that; a prebuilt WinRE-look image is also accepted as-is |
 | UEFI image | Latest project release (`uefi.img`), or your local build folder |
 | Phone drivers | Latest project release (`drivers.zip`), or your local build folder |
 | Download-mode USB driver for Heimdall (optional) | Not needed: the installer flashes TWRP through the Samsung USB driver. Only for the Heimdall fallback, via Zadig |

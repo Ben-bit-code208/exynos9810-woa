@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
+using System.Security.Cryptography;
 using System.Text.Json;
 using S9Woa.Installer.Core.Image;
 using S9Woa.Installer.Core.Processes;
+using S9Woa.Installer.Core.Twrp;
 
 namespace S9Woa.Installer.Core.Toolset;
 
@@ -60,9 +62,10 @@ public sealed class ToolsetManager
     private readonly ISignatureVerifier _verifier;
     private readonly ReleaseClient _releases;
     private readonly WingetClient _winget;
+    private readonly IWinReRecoveryBuilder _winre;
 
     public ToolsetManager(ToolsetPaths paths, IProcessRunner runner, HttpClient http, IRegistryReader registry,
-        ISignatureVerifier verifier, string? wingetPath = null)
+        ISignatureVerifier verifier, string? wingetPath = null, IWinReRecoveryBuilder? winReBuilder = null)
     {
         Paths = paths;
         _runner = runner;
@@ -70,6 +73,7 @@ public sealed class ToolsetManager
         _verifier = verifier;
         _releases = new ReleaseClient(http);
         _winget = new WingetClient(runner, wingetPath ?? WingetClient.Locate(paths));
+        _winre = winReBuilder ?? new WinReRecoveryBuilder();
         Config = ToolsetConfig.Load(paths.DataDirectory);
     }
 
@@ -80,6 +84,10 @@ public sealed class ToolsetManager
     public string TwrpPayload => Path.Combine(Paths.PayloadDirectory, "twrp-star2lte.img");
     public string UefiPayload => Path.Combine(Paths.PayloadDirectory, "uefi.img");
     public string DriversPayload => Path.Combine(Paths.PayloadDirectory, "drivers");
+
+    /// <summary>The WinRE recovery the installer actually flashes, built from the chosen TWRP.</summary>
+    public string TwrpWinrePayload => Path.Combine(Paths.PayloadDirectory, "twrp-winre-star2lte.img");
+    private string TwrpWinreInfoPath => TwrpWinrePayload + ".json";
 
     /// <summary>UEFI images with their <c>firmware.json</c> (one build per supported Windows build).</summary>
     public string UefiCatalogDirectory => Path.Combine(Paths.PayloadDirectory, "uefi");
@@ -131,11 +139,7 @@ public sealed class ToolsetManager
             case Tools.DownloadModeDriver:
                 return DownloadModeDriver.Detect(_registry);
             case Tools.Twrp:
-                return Payload(
-                    (TwrpPayload, BootImage.RecoveryPartitionBytes),
-                    (Path.Combine(Paths.BundledPayloadDirectory, "twrp.img"), BootImage.RecoveryPartitionBytes),
-                    (Path.Combine(Paths.BundledPayloadDirectory, "recovery.img"), BootImage.RecoveryPartitionBytes))
-                    ?? ToolStatus.Missing("Open the TWRP page, download the latest twrp-*-star2lte.img, then choose it here.");
+                return DetectTwrp();
             case Tools.Uefi:
                 if (LoadCatalogOrNull() is { } catalog && catalog.Present(BootImage.BootPartitionBytes) is { Count: > 0 } present)
                 {
@@ -165,6 +169,131 @@ public sealed class ToolsetManager
         path is null
             ? ToolStatus.Missing(def.WingetId is null ? "Not found." : $"Not found. Install it with winget ({def.WingetId}) or choose the file.")
             : ToolStatus.Ready(path);
+
+    /// <summary>
+    /// The installer flashes a WinRE-look recovery it builds from the chosen TWRP, not the raw
+    /// TWRP. This is Ready only when that build exists and is current: for a freshly built image
+    /// the recorded builder version and base hash must match, and a prebuilt WinRE image the user
+    /// supplied directly is accepted as-is.
+    /// </summary>
+    private ToolStatus DetectTwrp()
+    {
+        var info = WinReRecoveryInfo.Load(TwrpWinreInfoPath);
+        if (info is null || !File.Exists(TwrpWinrePayload) || BootImage.Validate(TwrpWinrePayload, BootImage.RecoveryPartitionBytes) is not null)
+        {
+            return File.Exists(TwrpPayload)
+                ? ToolStatus.Missing("TWRP is selected but the WinRE recovery is not built yet. Press Set up automatically, or choose the TWRP image again.")
+                : ToolStatus.Missing("Open the TWRP page, download twrp-3.7.0_9-0-star2lte.img, then choose it here.");
+        }
+        if (info.Source == WinReRecoveryInfo.Prebuilt)
+        {
+            return ToolStatus.Ready(TwrpWinrePayload,
+                "Using a prebuilt WinRE-look recovery as-is. Choose the official twrp-3.7.0_9-0-star2lte.img to get this "
+                + "installer's recovery (repair tools and the install progress screen).");
+        }
+        if (info.Builder != WinReTwrpBuilder.BuilderVersion || (File.Exists(TwrpPayload) && TwrpBaseSha256() != info.BaseSha256))
+        {
+            return ToolStatus.Missing("The WinRE recovery is out of date for this installer or TWRP image. Press Set up automatically to rebuild it.");
+        }
+        return ToolStatus.Ready(TwrpWinrePayload, "WinRE recovery built from TWRP 3.7.0_9-0.");
+    }
+
+    /// <summary>Builds (or accepts) the WinRE recovery from the raw TWRP in the payload.</summary>
+    public ToolStatus BuildWinReRecovery(IProgress<string>? log = null)
+    {
+        if (!File.Exists(TwrpPayload))
+        {
+            return ToolStatus.Missing("Choose the official TWRP image first.");
+        }
+        try
+        {
+            var kind = _winre.Classify(TwrpPayload);
+            switch (kind)
+            {
+                case BaseImageKind.OfficialTwrp:
+                    log?.Report("Building the WinRE recovery from TWRP 3.7.0_9-0 (about 20 seconds)...");
+                    var modules = Directory.Exists(TwrpModulesDirectory)
+                                  && Directory.EnumerateFiles(TwrpModulesDirectory, "*.ko").Any()
+                        ? TwrpModulesDirectory
+                        : null;
+                    var info = _winre.Build(TwrpPayload, TwrpWinrePayload, modules, log);
+                    info.Save(TwrpWinreInfoPath);
+                    return Detect(Tools.Twrp);
+
+                case BaseImageKind.WinReBuild:
+                    log?.Report("The chosen image is already a WinRE recovery; using it as-is.");
+                    Directory.CreateDirectory(Path.GetDirectoryName(TwrpWinrePayload)!);
+                    File.Copy(TwrpPayload, TwrpWinrePayload, overwrite: true);
+                    new WinReRecoveryInfo
+                    {
+                        Builder = WinReRecoveryInfo.Prebuilt,
+                        Source = WinReRecoveryInfo.Prebuilt,
+                        Sha256 = Sha256File(TwrpWinrePayload),
+                    }.Save(TwrpWinreInfoPath);
+                    return Detect(Tools.Twrp);
+
+                default:
+                    return new ToolStatus(ToolState.Error,
+                        "This is not the official TWRP 3.7.0_9-0 for star2lte. Download twrp-3.7.0_9-0-star2lte.img "
+                        + "from twrp.me and choose it, or pick a prebuilt WinRE recovery image.");
+            }
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or InvalidDataException)
+        {
+            return new ToolStatus(ToolState.Error, $"Could not build the WinRE recovery: {e.Message}");
+        }
+    }
+
+    private static string Sha256File(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    private sealed record HashCacheEntry(string Path, long Length, DateTime WriteTimeUtc, string Sha256);
+
+    // Detect runs on the UI thread every time the Setup page refreshes; hashing the 42 MB base
+    // image each time is a visible hitch, so the hash is cached until the file changes.
+    private volatile HashCacheEntry? _twrpBaseHash;
+
+    private string TwrpBaseSha256()
+    {
+        var file = new FileInfo(TwrpPayload);
+        var cached = _twrpBaseHash;
+        if (cached is not null && cached.Path == file.FullName && cached.Length == file.Length
+            && cached.WriteTimeUtc == file.LastWriteTimeUtc)
+        {
+            return cached.Sha256;
+        }
+        var sha = Sha256File(file.FullName);
+        _twrpBaseHash = new HashCacheEntry(file.FullName, file.Length, file.LastWriteTimeUtc, sha);
+        return sha;
+    }
+
+    /// <summary>
+    /// A TWRP image in a build folder: the official TWRP is always preferred; a prebuilt WinRE
+    /// recovery is taken only while no usable recovery is chosen, so it never replaces an official
+    /// base. UEFI images (which also carry "star2lte" in their names) are skipped.
+    /// </summary>
+    private string? FindTwrpInFolder(string folder, EnumerationOptions options)
+    {
+        string? prebuilt = null;
+        foreach (var file in Directory.EnumerateFiles(folder, "*.img", options)
+                     .Where(f => !Path.GetFileName(f).Contains("uefi", StringComparison.OrdinalIgnoreCase))
+                     .Where(f => BootImage.ValidateTwrp(f) is null)
+                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            switch (_winre.Classify(file))
+            {
+                case BaseImageKind.OfficialTwrp:
+                    return file;
+                case BaseImageKind.WinReBuild:
+                    prebuilt ??= file;
+                    break;
+            }
+        }
+        return prebuilt is not null && Detect(Tools.Twrp).State != ToolState.Ready ? prebuilt : null;
+    }
 
     private static ToolStatus? Payload(params (string File, long Max)[] candidates)
     {
@@ -235,7 +364,19 @@ public sealed class ToolsetManager
                 return await RunSamsungInstallerAsync(file, log, ct).ConfigureAwait(false);
 
             case Tools.Twrp:
-                return CopyPayload(file, TwrpPayload, BootImage.ValidateTwrp(file), id);
+            {
+                var problem = BootImage.ValidateTwrp(file);
+                if (problem is not null)
+                {
+                    return new ToolStatus(ToolState.Error, problem);
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(TwrpPayload)!);
+                if (!string.Equals(Path.GetFullPath(file), Path.GetFullPath(TwrpPayload), StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Copy(file, TwrpPayload, overwrite: true);
+                }
+                return await Task.Run(() => BuildWinReRecovery(log), ct).ConfigureAwait(false);
+            }
 
             case Tools.Uefi:
                 return CopyPayload(file, UefiPayload, BootImage.ValidateUefi(file), id);
@@ -334,6 +475,23 @@ public sealed class ToolsetManager
             log?.Report($"Using {modules.Count} TWRP kernel module(s): {string.Join(", ", modules.Select(Path.GetFileName))}");
         }
 
+        // A TWRP image in the folder becomes the recovery's base; freshly imported modules also
+        // need a rebuild so the WinRE recovery carries them. Either way, build once.
+        var rebuild = modules.Count > 0 && File.Exists(TwrpPayload)
+            && WinReRecoveryInfo.Load(TwrpWinreInfoPath)?.Source != WinReRecoveryInfo.Prebuilt;
+        if (FindTwrpInFolder(folder, options) is { } twrpImage
+            && !(File.Exists(TwrpPayload) && Sha256File(twrpImage) == TwrpBaseSha256()))
+        {
+            log?.Report($"Using TWRP image {twrpImage}");
+            Directory.CreateDirectory(Path.GetDirectoryName(TwrpPayload)!);
+            File.Copy(twrpImage, TwrpPayload, overwrite: true);
+            rebuild = true;
+        }
+        if (rebuild)
+        {
+            results[Tools.Twrp] = BuildWinReRecovery(log);
+        }
+
         var packages = BuiltDriverPackages(folder);
         if (!packages.Any(p => File.Exists(Path.Combine(p, UfsInf))))
         {
@@ -416,15 +574,26 @@ public sealed class ToolsetManager
 
     /// <summary>
     /// Provides everything that can be provided without the user: winget programs
-    /// and release payloads (unless a build folder is configured). Tools that need a
-    /// user decision (Samsung installer, TWRP file) are left for the Setup page.
+    /// and release payloads (unless a build folder is configured), and the WinRE recovery
+    /// built from a TWRP image that was already chosen (for example after an installer
+    /// update bumps the builder). Tools that need a user decision (Samsung installer,
+    /// the TWRP download itself) are left for the Setup page.
     /// </summary>
     public async Task<IReadOnlyDictionary<string, ToolStatus>> AutoSetupAsync(IProgress<string>? log = null, CancellationToken ct = default)
     {
         if (Config.BuildFolder is { } folder && Directory.Exists(folder)
             && (Detect(Tools.Uefi).State != ToolState.Ready || Detect(Tools.Drivers).State != ToolState.Ready))
         {
-            UseBuildFolder(folder, log);
+            // Off the caller's thread: importing can include building the WinRE recovery.
+            await Task.Run(() => UseBuildFolder(folder, log), ct).ConfigureAwait(false);
+        }
+        if (File.Exists(TwrpPayload) && Detect(Tools.Twrp).State != ToolState.Ready)
+        {
+            var twrp = await Task.Run(() => BuildWinReRecovery(log), ct).ConfigureAwait(false);
+            if (twrp.State != ToolState.Ready)
+            {
+                log?.Report($"{Tools.Get(Tools.Twrp).Name}: {twrp.Detail}");
+            }
         }
         foreach (var def in Tools.All)
         {

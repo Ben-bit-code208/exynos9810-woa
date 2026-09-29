@@ -12,4 +12,24 @@
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
   </ItemGroup>
+  <!--
+    The WinRE recovery theme, scripts, procedural art and GPL kernel modules live
+    once under tools/twrp-winre; the installer embeds them so it can build the
+    recovery on the end user's PC with no Python. Fonts are NOT embedded: they are
+    copied from the user's own %WINDIR%\Fonts at build time (see WinReTwrpBuilder).
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\tools\twrp-winre\theme\*.xml">
+      <Link>Twrp\Assets\theme\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\tools\twrp-winre\overlay\sbin\*.sh">
+      <Link>Twrp\Assets\sbin\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\tools\twrp-winre\assets\images\*.png">
+      <Link>Twrp\Assets\images\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\tools\twrp-winre\modules\*.ko">
+      <Link>Twrp\Assets\modules\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

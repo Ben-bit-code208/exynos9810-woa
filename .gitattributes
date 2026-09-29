@@ -12,3 +12,4 @@
 *.jpg binary
 *.efi binary
 *.fd binary
+*.ko binary

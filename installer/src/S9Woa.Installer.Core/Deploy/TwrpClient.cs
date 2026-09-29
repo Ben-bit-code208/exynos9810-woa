@@ -198,4 +198,56 @@ public sealed partial class TwrpClient
         var r = await AdbAsync(["shell", $"grep -q ' {mountpoint} ' /proc/mounts && echo yes || echo no"], Quick, ct).ConfigureAwait(false);
         return r.StdOut.Contains("yes", StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Writes the install-progress status file the baked-in <c>winre-statuswatch.sh</c> watches
+    /// to raise the "Installing Windows" screen. Best-effort and low overhead: base64 avoids all
+    /// shell-quoting hazards, and a failure here never aborts the install (the watcher's dd-writer
+    /// fallback still raises a generic screen).
+    /// </summary>
+    public async Task SetInstallStatusAsync(WinReStatus status, CancellationToken ct = default)
+    {
+        try
+        {
+            var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(status.ToFileContents()));
+            await ShellCheckedAsync($"mkdir -p {WinReStatus.DeviceDir}; echo {b64} | base64 -d > {WinReStatus.DevicePath}", Quick, ct)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // The screen is a courtesy; never let it fail the write.
+        }
+    }
+
+    /// <summary>Removes the install-progress status file so the "Installing Windows" screen clears.</summary>
+    public async Task ClearInstallStatusAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await ShellCheckedAsync($"rm -f {WinReStatus.DevicePath} 2>/dev/null; true", Quick, ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Neutralises a stale <c>/sdcard/TWRP/theme/ui.zip</c> for the CURRENT boot. TWRP loads that
+    /// zip in preference to the theme baked into the recovery image, so a leftover from an earlier
+    /// experiment could override the WinRE theme; the baked-in postrecoveryboot.sh only heals the
+    /// next boot, so the installer deletes it here (internal storage is /data/media on this build,
+    /// not /data/media/0). Best-effort.
+    /// </summary>
+    public async Task RemoveStaleThemeOverrideAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            await ShellCheckedAsync(
+                "for z in /data/media/TWRP/theme/ui.zip /data/media/0/TWRP/theme/ui.zip /sdcard/TWRP/theme/ui.zip; "
+                + "do rm -f \"$z\" 2>/dev/null; done; true", Quick, ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
 }

@@ -15,6 +15,8 @@ public sealed record RecoveryRecord(uint Generation, uint State, uint Owner, uin
     public const uint Magic = 0x31445752; // "RWD1"
     public const int Bytes = 64;
     public const uint RecoveryPending = 0xA0;
+    /// <summary>The next start found the previous boot's owner still in place: nothing was attempted.</summary>
+    public const uint StaleBootOwnerReason = 2;
 
     private static readonly Dictionary<uint, string> States = new()
     {

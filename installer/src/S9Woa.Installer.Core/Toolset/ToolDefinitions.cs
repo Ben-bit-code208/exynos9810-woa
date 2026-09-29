@@ -86,7 +86,8 @@ public static class Tools
             "Only for the Heimdall fallback: a one-time Zadig step while the phone is in Download mode.",
             ToolKind.Driver, false, ToolSource.Launch),
         new(Twrp, "TWRP recovery for star2lte",
-            "The recovery the installer boots to back up the phone and write Windows.",
+            "The recovery the installer boots to back up the phone and write Windows. Choose the official "
+            + "twrp-3.7.0_9-0-star2lte.img; the installer turns it into a Windows Recovery-style recovery on this PC.",
             ToolKind.Payload, true, ToolSource.OpenPage | ToolSource.PickFile, PageUrl: TwrpPage, FilePattern: "*.img"),
         new(Uefi, "UEFI firmware image",
             "The open-source UEFI that boots Windows, written to the BOOT partition.",

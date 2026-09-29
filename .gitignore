@@ -34,6 +34,10 @@ __pycache__/
 .pytest_cache/
 *.pyc
 
+# WinRE-look recovery: preview contact sheet is a regenerable dev artifact
+tools/twrp-winre/assets/preview.png
+tools/twrp-winre/work/
+
 # .NET
 bin/
 obj/

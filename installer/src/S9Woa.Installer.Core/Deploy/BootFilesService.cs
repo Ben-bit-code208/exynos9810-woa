@@ -35,6 +35,7 @@ public sealed class BootFilesService
         {
             throw new DirectoryNotFoundException($"No complete EFI\\ tree under {espDirectory}. Build the Windows image first.");
         }
+        await _twrp.SetInstallStatusAsync(WinReStatus.BootFiles(), ct).ConfigureAwait(false);
         foreach (var partition in new[] { PartitionMap.EfiSystemPartition, PartitionMap.SecondaryEfiSystemPartition })
         {
             await WriteToAsync(partition, efi, log, ct).ConfigureAwait(false);

@@ -62,7 +62,10 @@ holds: every required item is `Ready`; optional ones (the Heimdall fallback) nev
   downloaded installer runs only after `AuthenticodeVerifier` (`WinVerifyTrust`)
   confirms a trusted chain and a Samsung Electronics signer.
 - **TWRP** — the user's download is accepted only if the name is a star2lte build
-  and `BootImage` sees an `ANDROID!` header that fits RECOVERY.
+  and `BootImage` sees an `ANDROID!` header that fits RECOVERY. The installer then
+  re-skins the official image into the WinRE-look recovery it actually flashes
+  (see *WinRE-look recovery* below); the TWRP tool is Ready only once that build
+  exists and matches the current builder.
 - **UEFI and drivers** — `ReleaseClient` reads the latest release of the
   configured repository and keeps an asset only if it matches `SHA256SUMS` (a
   release without it is refused). `drivers.zip` is extracted with an
@@ -137,6 +140,44 @@ seams so it is unit-tested without hardware:
 - `BootConfiguration` — retargets the freshly built BCD so the boot manager and
   loader find Windows by locating `\Windows`, rather than by a partition GUID the
   raw USERDATA volume does not have. Uses only public `bcdedit` features.
+
+### WinRE-look recovery (`Core/Twrp`)
+
+The installer does not flash the raw TWRP the user downloads; it re-skins that
+image, on the user's own PC, into a Windows-Recovery-Environment look and flashes
+that. `WinReTwrpBuilder` is the whole build and is deterministic (same base image
+and fonts → same bytes):
+
+- it verifies the base is exactly the official `twrp-3.7.0_9-0-star2lte.img` by
+  SHA-256 (and accepts a zero-padded RECOVERY dump of it);
+- `AndroidBootImage` / `CpioArchive` parse and re-serialise the Samsung boot
+  image and its newc ramdisk byte-for-byte (a port of the reference
+  `tools/twrp-winre/bootimg.py`), and `Lzma/LzmaAlone` (the vendored public-domain
+  7-Zip LZMA SDK) decompresses and recompresses the ramdisk in the exact "LZMA
+  alone" framing the kernel expects;
+- `PowerOffRoutePatch` applies a four-byte, hash-and-pattern-gated patch to the
+  kernel so USB-connected "Turn off" powers the phone down through Samsung's hook;
+- `WinReTheme` reskins the stock theme (black/white, Windows-blue accent, Segoe
+  fonts) and includes the embedded `winre.xml`; the WinRE pages, the `/sbin`
+  scripts, the procedural art and the two GPL kernel modules are embedded from
+  `tools/twrp-winre`, and the Segoe faces are copied from the builder's own
+  `%WINDIR%\Fonts` (never redistributed);
+- it asserts the output fits RECOVERY and that the device-tree, second stage and
+  kernel (bar the patch) are unchanged.
+
+`ToolsetManager` builds this when the user provides the official TWRP (chosen on the
+Setup page, found in a build folder, or already chosen and rebuilt by *Set up
+automatically* after an installer update); `Detect`
+reports the TWRP tool Ready only when the built WinRE image exists and its
+recorded builder version and base hash still match (a prebuilt WinRE image the
+user supplies directly is accepted as-is with a note), and the flashers use that
+built image. While the installer writes the phone, `TransferService`,
+`BootFilesService` and the UEFI step write a small `/tmp/s9woa/status` file
+(`WinReStatus`) that the recovery's `winre-statuswatch.sh` turns into an
+"Installing Windows" screen; the file is refreshed at most every ~5 s and removed
+when writing finishes. The installer also deletes a stale `TWRP/theme/ui.zip`
+over adb so it cannot override the baked theme, and never uses `twrp`/ORS on any
+hot path.
 
 `Image/VhdxImageBuilder` runs the whole host build: it scripts diskpart to create
 an ESP + MSR + NTFS layout in a VHDX, applies the edition, injects drivers, runs

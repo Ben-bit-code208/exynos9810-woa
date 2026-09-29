@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<!--
+	SPDX-License-Identifier: BSD-2-Clause-Patent
+
+	Boot splash - the WinRE-style rotating gears on pitch black.
+
+	This replaces the stock TeamWin splash, so it is the very first thing drawn
+	after the kernel hands over, and it runs before the main theme is parsed. It
+	is deliberately trivial: a background colour and one animation, no fonts and
+	no text, because a failure here happens before there is any way to see it.
+
+	The builder injects the shared WinRE <variable> block into this file, so the
+	colours and the gear placement stay in step with the rest of the theme.
+
+	The gear frames are declared with no `size`, exactly as the stock
+	`indeterminate` animation is: TWRP loads winrecog001.png, winrecog002.png,
+	... until one fails to open, so the frame count lives in the asset generator
+	alone. retainaspect is required: this panel is 1440x2960 while the theme is
+	authored at 1080x1920, so an unqualified bitmap renders about 15.6% too tall
+	and the round gears come out oval.
+-->
+<recovery>
+	<details>
+		<resolution width="1080" height="1920"/>
+		<author>TeamWin</author>
+		<title>TWRP</title>
+		<description>Windows Recovery Environment splash</description>
+		<themeversion>5</themeversion>
+	</details>
+
+	<resources>
+		<animation name="winre_cogs" filename="winrecog" retainaspect="1"/>
+	</resources>
+
+	<variables>
+		<variable name="screen_width" value="1080"/>
+		<variable name="screen_height" value="1920"/>
+	</variables>
+
+	<pages>
+		<page name="splash">
+			<background color="%winre_bg%"/>
+
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="24" render="8"/>
+				<loop frame="1"/>
+			</animation>
+		</page>
+	</pages>
+</recovery>

@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using S9Woa.Installer.Core.Processes;
 using S9Woa.Installer.Core.Toolset;
+using S9Woa.Installer.Core.Twrp;
 
 namespace S9Woa.Installer.Core.Tests;
 
@@ -63,10 +64,33 @@ public sealed class ToolsetTests : IDisposable
             Task.FromResult(respond(request.RequestUri!));
     }
 
+    /// <summary>
+    /// Stand-in for the real WinRE builder so the toolset tests do not need the 42 MiB official
+    /// TWRP image: it "builds" by copying the raw image to the output and recording a matching
+    /// builder version and base hash, which is all Detect(Twrp) checks. The real builder is
+    /// exercised end-to-end in WinReBuilderTests against the reference image when present.
+    /// </summary>
+    private sealed class FakeWinReBuilder(BaseImageKind kind = BaseImageKind.OfficialTwrp, Func<string, BaseImageKind>? classify = null)
+        : IWinReRecoveryBuilder
+    {
+        public BaseImageKind Classify(string imagePath) => classify?.Invoke(imagePath) ?? kind;
+
+        public WinReRecoveryInfo Build(string basePath, string outputPath, string? modulesDirectory, IProgress<string>? log = null)
+        {
+            var bytes = File.ReadAllBytes(basePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            File.WriteAllBytes(outputPath, bytes);
+            var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+            return new WinReRecoveryInfo { Builder = WinReTwrpBuilder.BuilderVersion, BaseSha256 = sha, Sha256 = sha };
+        }
+    }
+
     private ToolsetManager Manager(IProcessRunner? runner = null, FakeRegistry? registry = null,
-        ISignatureVerifier? verifier = null, HttpMessageHandler? http = null, string? winget = null) =>
+        ISignatureVerifier? verifier = null, HttpMessageHandler? http = null, string? winget = null,
+        IWinReRecoveryBuilder? winre = null) =>
         new(Paths(), runner ?? new FakeRunner(), new HttpClient(http ?? new FakeHttp(_ => new HttpResponseMessage(HttpStatusCode.NotFound))),
-            registry ?? new FakeRegistry(), verifier ?? new FakeVerifier(new SignatureInfo(false, null)), winget);
+            registry ?? new FakeRegistry(), verifier ?? new FakeVerifier(new SignatureInfo(false, null)), winget,
+            winre ?? new FakeWinReBuilder());
 
     [Fact]
     public void LocatorSearchesOverrideAppWingetAndPath()
@@ -220,7 +244,9 @@ public sealed class ToolsetTests : IDisposable
 
         var twrp = Touch(Path.Combine(_root, "dl", "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes());
         Assert.Equal(ToolState.Ready, (await m.UseFileAsync(Tools.Twrp, twrp)).State);
-        Assert.True(File.Exists(m.TwrpPayload));
+        Assert.True(File.Exists(m.TwrpPayload));       // the raw TWRP is kept
+        Assert.True(File.Exists(m.TwrpWinrePayload));   // and the WinRE recovery is built from it
+        Assert.Equal(m.TwrpWinrePayload, m.ResolvePath(Tools.Twrp)); // flashing uses the WinRE image
 
         var wrong = Touch(Path.Combine(_root, "dl", "twrp-star2qlte.img"), BootImageBytes());
         Assert.Equal(ToolState.Error, (await m.UseFileAsync(Tools.Twrp, wrong)).State);
@@ -229,6 +255,106 @@ public sealed class ToolsetTests : IDisposable
         Assert.Equal(heimdall, (await m.UseFileAsync(Tools.Heimdall, heimdall)).Path);
         Assert.Equal(ToolState.Error, (await m.UseFileAsync(Tools.Heimdall, twrp)).State);
         Assert.Equal(heimdall, ToolsetConfig.Load(m.Paths.DataDirectory).Overrides[Tools.Heimdall]);
+    }
+
+    [Fact]
+    public async Task TwrpBuildsWinReAndDetectsStaleBuilds()
+    {
+        var m = Manager();
+        Assert.Equal(ToolState.Missing, m.Detect(Tools.Twrp).State);
+
+        var twrp = Touch(Path.Combine(_root, "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes());
+        var status = await m.UseFileAsync(Tools.Twrp, twrp);
+        Assert.Equal(ToolState.Ready, status.State);
+        Assert.Contains("WinRE recovery built", status.Detail);
+        Assert.Equal(m.TwrpWinrePayload, status.Path);
+
+        // A newer builder makes the recorded build stale, so it is no longer Ready.
+        var infoPath = m.TwrpWinrePayload + ".json";
+        var info = WinReRecoveryInfo.Load(infoPath)!;
+        info.Builder = "winre-999";
+        info.Save(infoPath);
+        Assert.Equal(ToolState.Missing, m.Detect(Tools.Twrp).State);
+
+        // Rebuilt, it is Ready again; a different base image underneath makes it stale too.
+        Assert.Equal(ToolState.Ready, (await m.UseFileAsync(Tools.Twrp, twrp)).State);
+        File.WriteAllBytes(m.TwrpPayload, BootImageBytes(9000));
+        Assert.Equal(ToolState.Missing, m.Detect(Tools.Twrp).State);
+    }
+
+    // Stand-ins for "official TWRP" and "an existing WinRE build", told apart by content so the
+    // classification survives the image being copied into the payload under another name.
+    private static byte[] PrebuiltWinReBytes()
+    {
+        var b = BootImageBytes(8192);
+        "WINRE"u8.CopyTo(b.AsSpan(16));
+        return b;
+    }
+
+    private static FakeWinReBuilder ByContent() => new(classify: p =>
+        File.ReadAllBytes(p).AsSpan().IndexOf("WINRE"u8) >= 0 ? BaseImageKind.WinReBuild : BaseImageKind.OfficialTwrp);
+
+    [Fact]
+    public async Task AutoSetupBuildsWinReFromAnAlreadyChosenTwrp()
+    {
+        var m = Manager();
+        // e.g. chosen by an earlier installer version: the raw image is there, the WinRE build is not.
+        Touch(m.TwrpPayload, BootImageBytes());
+        Assert.Equal(ToolState.Missing, m.Detect(Tools.Twrp).State);
+
+        var result = await m.AutoSetupAsync();
+        Assert.Equal(ToolState.Ready, result[Tools.Twrp].State);
+        Assert.Equal(m.TwrpWinrePayload, result[Tools.Twrp].Path);
+    }
+
+    [Fact]
+    public async Task BuildFolderSuppliesTwrpButAPrebuiltNeverReplacesOfficial()
+    {
+        // Nothing chosen yet: a prebuilt WinRE image in the build folder is taken as-is,
+        // and the UEFI image (also named *star2lte*) is not mistaken for TWRP.
+        var first = Manager(winre: ByContent());
+        var build = Path.Combine(_root, "build");
+        Touch(Path.Combine(build, @"twrp\star2lte-winre-recovery.img"), PrebuiltWinReBytes());
+        Touch(Path.Combine(build, @"uefi\star2lte-uefi-22621.2428.img"), BootImageBytes());
+        var r = first.UseBuildFolder(build);
+        Assert.Equal(ToolState.Ready, r[Tools.Twrp].State);
+        Assert.Contains("prebuilt", r[Tools.Twrp].Detail, StringComparison.OrdinalIgnoreCase);
+
+        // An official TWRP chosen on the Setup page is not displaced by that prebuilt image.
+        var m = Manager(winre: ByContent());
+        await m.UseFileAsync(Tools.Twrp, Touch(Path.Combine(_root, "dl", "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes(9000)));
+        Assert.False(m.UseBuildFolder(build).ContainsKey(Tools.Twrp));
+        Assert.Contains("built from TWRP", m.Detect(Tools.Twrp).Detail);
+
+        // And an official image in the build folder is used and built.
+        Touch(Path.Combine(build, @"twrp\twrp-3.7.0_9-0-star2lte.img"), BootImageBytes(10000));
+        var fresh = Manager(winre: ByContent());
+        File.Delete(fresh.TwrpWinrePayload);
+        File.Delete(fresh.TwrpPayload);
+        var r2 = fresh.UseBuildFolder(build);
+        Assert.Equal(ToolState.Ready, r2[Tools.Twrp].State);
+        Assert.Contains("built from TWRP", r2[Tools.Twrp].Detail);
+    }
+
+    [Fact]
+    public async Task TwrpAcceptsAPrebuiltWinReImage()
+    {
+        var m = Manager(winre: new FakeWinReBuilder(BaseImageKind.WinReBuild));
+        var twrp = Touch(Path.Combine(_root, "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes());
+        var status = await m.UseFileAsync(Tools.Twrp, twrp);
+        Assert.Equal(ToolState.Ready, status.State);
+        Assert.Contains("prebuilt", status.Detail, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(m.TwrpWinrePayload, m.ResolvePath(Tools.Twrp));
+    }
+
+    [Fact]
+    public async Task TwrpRejectsAnImageThatIsNotOfficialTwrp()
+    {
+        var m = Manager(winre: new FakeWinReBuilder(BaseImageKind.Unknown));
+        var twrp = Touch(Path.Combine(_root, "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes());
+        var status = await m.UseFileAsync(Tools.Twrp, twrp);
+        Assert.Equal(ToolState.Error, status.State);
+        Assert.Contains("official TWRP", status.Detail);
     }
 
     [Fact]

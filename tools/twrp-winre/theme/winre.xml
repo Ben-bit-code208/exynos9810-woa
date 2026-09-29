@@ -1,0 +1,1101 @@
+<?xml version="1.0"?>
+<!--
+	SPDX-License-Identifier: BSD-2-Clause-Patent
+
+	WinRE shell for TWRP - star2lte (Galaxy S9+ / Exynos 9810)
+
+	Authored in the stock theme's 1080x1920 logical space so the untouched TWRP
+	pages keep scaling exactly as they do today; TWRP stretches this file by the
+	same factors. Animations declare retainaspect="1" (in ui.xml) so the gears
+	stay circular on the 1440x2960 panel.
+
+	'main' is the entry page TWRP always jumps to, so it is the WinRE screen; the
+	stock TWRP menu is renamed to twrp_main/twrp_main2 by the builder. That also
+	makes every stock Home button land back on WinRE instead of the TWRP grid.
+
+	Device traps encoded here, each learned the hard way (see the research
+	tools/twrp-winre README and this repo's docs):
+	  * command output only reaches the on-screen console through
+	    function="terminalcommand", never "cmd" (log only) and never
+	    "openrecoveryscript" (which reboots to Android on success);
+	  * every terminalcommand runs through /sbin/winre-gui.sh so the boot-log
+	    chatter is scrolled off first;
+	  * the copy screen's trigger is a single winre_push != "0" condition; a
+	    var2="" compare is evaluated as false by TWRP and silently disables it;
+	  * every page has hardware back+home handlers so no variable-gated page can
+	    become a dead end.
+-->
+<recovery>
+	<pages>
+		<!-- Entry point. Mirrors the stock 'main' page: reset the action
+		     variables and the copy-screen flag before drawing anything. -->
+		<page name="main">
+			<action>
+				<actions>
+					<!-- 0 = never blank. TWRP only raises the swipe-to-unlock
+					     overlay after the blank timer fires, so this is what
+					     actually disables the lock screen; the neutered 'lock'
+					     page below is the backstop. Set here rather than from
+					     the persisted setting, which lives on /data and is not
+					     readable until it is decrypted. -->
+					<action function="set">tw_screen_timeout_secs=0</action>
+					<action function="set">tw_clear_destination=winre_home</action>
+					<!-- Home is the escape hatch from the copy screen, and it
+					     works by clearing the flag the screen keys off. Also the
+					     boot-time initialisation: an unset variable reads as "",
+					     which must not look like "a copy is running". -->
+					<action function="set">winre_push=0</action>
+					<action function="set">winre_push_sub=Please wait</action>
+					<!-- Where the copy screen returns to. The watcher rewrites
+					     this to whatever page it interrupted and resets it here
+					     afterwards. -->
+					<action function="set">winre_push_back=winre_home</action>
+					<action function="page">clear_vars</action>
+				</actions>
+			</action>
+		</page>
+
+		<!-- The stock swipe-to-unlock page is renamed to twrp_lock by the
+		     builder and this takes its name. TWRP raises the overlay by name
+		     from C++, so the page has to keep existing; it just dismisses itself
+		     the moment it is raised. -->
+		<page name="lock">
+			<action>
+				<actions>
+					<action function="overlay"/>
+				</actions>
+			</action>
+		</page>
+
+		<!-- ============================== home ============================= -->
+		<page name="winre_home">
+			<background color="%winre_bg%"/>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%winre_margin%" y="%winre_hdr_y%"/>
+				<text>Choose an option</text>
+			</text>
+
+			<!-- 1 - Continue -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r1_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_go_system</action>
+			</button>
+			<image>
+				<image resource="winre_ic_continue"/>
+				<placement x="%winre_icon_x%" y="%winre_r1_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r1_title_y%"/>
+				<text>Continue</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r1_desc_y%"/>
+				<text>Exit and continue to Windows</text>
+			</text>
+
+			<!-- 2 - Restart to recovery -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r2_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_go_recovery</action>
+			</button>
+			<image>
+				<image resource="winre_ic_recovery"/>
+				<placement x="%winre_icon_x%" y="%winre_r2_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r2_title_y%"/>
+				<text>Restart to recovery</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r2_desc_y%"/>
+				<text>Restart and come straight back to this screen</text>
+			</text>
+
+			<!-- 3 - Troubleshoot -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r3_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_troubleshoot</action>
+			</button>
+			<image>
+				<image resource="winre_ic_troubleshoot"/>
+				<placement x="%winre_icon_x%" y="%winre_r3_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r3_title_y%"/>
+				<text>Troubleshoot</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r3_desc_y%"/>
+				<text>Repair the phone, or reset tools and logs</text>
+			</text>
+
+			<!-- 4 - Turn off your PC -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r4_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_go_poweroff</action>
+			</button>
+			<image>
+				<image resource="winre_ic_poweroff"/>
+				<placement x="%winre_icon_x%" y="%winre_r4_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r4_solo_y%"/>
+				<text>Turn off your PC</text>
+			</text>
+
+			<text color="%winre_stamp%">
+				<font resource="winre_small"/>
+				<placement x="%center_x%" y="%winre_stamp_y%" placement="5"/>
+				<text>star2lte | %tw_version%</text>
+			</text>
+
+			<!-- Raise the copy screen if the installer starts writing while the
+			     idle menu is up. A single != "0" compare, never an empty one. -->
+			<action>
+				<condition var1="winre_push" op="!=" var2="0"/>
+				<actions>
+					<action function="page">winre_push</action>
+				</actions>
+			</action>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<!-- ====================== Installing Windows ======================= -->
+		<!-- Raised by /sbin/winre-statuswatch.sh, which watches the installer's
+		     status file (/tmp/s9woa/status) and, as a fallback, any process
+		     writing to /dev/block/*, then pokes winre_push through
+		     openrecoveryscript. The trigger lives ONLY on the static menu pages
+		     (see the watcher's RAISE_PAGES): a write starting must never yank the
+		     screen away from a running report or a confirmation. -->
+		<page name="winre_push">
+			<background color="%winre_bg%"/>
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="24" render="1"/>
+				<loop frame="1"/>
+			</animation>
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
+				<text>Installing Windows</text>
+			</text>
+			<!-- The watcher parks the phase caption here (e.g. "Copying Windows"
+			     or "Copying Windows - 45%"); it changes only a few times over a
+			     copy, so the ORS bounce it costs is invisible. -->
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
+				<text>%winre_push_sub%</text>
+			</text>
+			<animation>
+				<placement x="%winre_bar_x%" y="%winre_bar_y%"/>
+				<resource name="winre_bar"/>
+				<speed fps="24" render="1"/>
+				<loop frame="1"/>
+			</animation>
+			<text color="%winre_stamp%">
+				<font resource="winre_small"/>
+				<placement x="%center_x%" y="%winre_push_name_y%" placement="5"/>
+				<text>Please do not disconnect the phone</text>
+			</text>
+
+			<action>
+				<condition var1="winre_push" op="=" var2="0"/>
+				<actions>
+					<action function="page">%winre_push_back%</action>
+				</actions>
+			</action>
+
+			<!-- Home/Back go through 'main', which resets winre_push, so the
+			     user can always walk out even if the watcher died mid-copy. -->
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<!-- ============================ Troubleshoot ======================= -->
+		<page name="winre_troubleshoot">
+			<background color="%winre_bg%"/>
+
+			<button>
+				<placement x="0" y="%winre_back_hit_y%" w="240" h="180"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">main</action>
+			</button>
+			<image>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_back_x%" y="%winre_back_y%" placement="4"/>
+			</image>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%winre_margin%" y="%winre_hdr_y%"/>
+				<text>Troubleshoot</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_margin%" y="%winre_sub_y%"/>
+				<text>Repair the phone so Windows can start</text>
+			</text>
+
+			<!-- Repair Windows volume -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r1_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_operation_state=0</action>
+					<action function="set">tw_back=winre_troubleshoot</action>
+					<action function="set">tw_has_action2=0</action>
+					<action function="set">tw_terminal_location=/</action>
+					<action function="set">tw_action=terminalcommand</action>
+					<action function="set">tw_action_param=/sbin/winre-gui.sh /sbin/winre-actions.sh repair-volume</action>
+					<action function="set">winre_busy_title=Repairing the Windows volume</action>
+					<action function="set">winre_done_title=Windows volume checked</action>
+					<action function="set">winre_done_sub=Full report: /sdcard/WinRE/actions-latest.txt</action>
+					<action function="set">winre_confirm_h=Repair Windows volume</action>
+					<action function="set">winre_confirm_l1=This unmounts the Windows storage and runs a filesystem</action>
+					<action function="set">winre_confirm_l2=check on it. It does not delete files, but do not</action>
+					<action function="set">winre_confirm_l3=disconnect the phone while it runs.</action>
+					<action function="set">winre_confirm_btn=Repair</action>
+					<action function="page">winre_confirm</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_repair"/>
+				<placement x="%winre_icon_x%" y="%winre_r1_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r1_title_y%"/>
+				<text>Repair Windows volume</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r1_desc_y%"/>
+				<text>Check the NTFS filesystem Windows boots from</text>
+			</text>
+
+			<!-- Repair boot partitions -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r2_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_operation_state=0</action>
+					<action function="set">tw_back=winre_troubleshoot</action>
+					<action function="set">tw_has_action2=0</action>
+					<action function="set">tw_terminal_location=/</action>
+					<action function="set">tw_action=terminalcommand</action>
+					<action function="set">tw_action_param=/sbin/winre-gui.sh /sbin/winre-actions.sh repair-boot</action>
+					<action function="set">winre_busy_title=Repairing the boot partitions</action>
+					<action function="set">winre_done_title=Boot partitions checked</action>
+					<action function="set">winre_done_sub=Full report: /sdcard/WinRE/actions-latest.txt</action>
+					<action function="set">winre_confirm_h=Repair boot partitions</action>
+					<action function="set">winre_confirm_l1=This runs a filesystem check on the two FAT boot</action>
+					<action function="set">winre_confirm_l2=partitions the firmware reads. It repairs them in place</action>
+					<action function="set">winre_confirm_l3=and never reformats them.</action>
+					<action function="set">winre_confirm_btn=Repair</action>
+					<action function="page">winre_confirm</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_disk"/>
+				<placement x="%winre_icon_x%" y="%winre_r2_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r2_title_y%"/>
+				<text>Repair boot partitions</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r2_desc_y%"/>
+				<text>Check the FAT partitions the firmware boots from</text>
+			</text>
+
+			<!-- Clear boot ticket -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r3_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_operation_state=0</action>
+					<action function="set">tw_back=winre_troubleshoot</action>
+					<action function="set">tw_has_action2=0</action>
+					<action function="set">tw_terminal_location=/</action>
+					<action function="set">tw_action=terminalcommand</action>
+					<action function="set">tw_action_param=/sbin/winre-gui.sh /sbin/winre-actions.sh clear-ticket</action>
+					<action function="set">winre_busy_title=Clearing the boot ticket</action>
+					<action function="set">winre_done_title=Boot ticket cleared</action>
+					<action function="set">winre_done_sub=Full report: /sdcard/WinRE/actions-latest.txt</action>
+					<action function="set">winre_confirm_h=Clear boot ticket</action>
+					<action function="set">winre_confirm_l1=The phone keeps returning to this recovery when a</action>
+					<action function="set">winre_confirm_l2=stale boot ticket is set. This clears it so the next</action>
+					<action function="set">winre_confirm_l3=restart goes straight to Windows.</action>
+					<action function="set">winre_confirm_btn=Clear</action>
+					<action function="page">winre_confirm</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_ticket"/>
+				<placement x="%winre_icon_x%" y="%winre_r3_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r3_title_y%"/>
+				<text>Clear boot ticket</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r3_desc_y%"/>
+				<text>Stop the phone returning here instead of Windows</text>
+			</text>
+
+			<!-- Advanced options -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r4_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_advanced</action>
+			</button>
+			<image>
+				<image resource="winre_ic_troubleshoot"/>
+				<placement x="%winre_icon_x%" y="%winre_r4_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r4_title_y%"/>
+				<text>Advanced options</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r4_desc_y%"/>
+				<text>Diagnostics, command prompt and full TWRP</text>
+			</text>
+
+			<action>
+				<condition var1="winre_push" op="!=" var2="0"/>
+				<actions>
+					<action function="page">winre_push</action>
+				</actions>
+			</action>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<!-- ========================= Advanced options ===================== -->
+		<page name="winre_advanced">
+			<background color="%winre_bg%"/>
+
+			<button>
+				<placement x="0" y="%winre_back_hit_y%" w="240" h="180"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_troubleshoot</action>
+			</button>
+			<image>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_back_x%" y="%winre_back_y%" placement="4"/>
+			</image>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%winre_margin%" y="%winre_hdr_y%"/>
+				<text>Advanced options</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_margin%" y="%winre_sub_y%"/>
+				<text>Diagnostics and the full recovery toolset</text>
+			</text>
+
+			<!-- Check PRAM -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r1_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_operation_state=0</action>
+					<action function="set">tw_back=winre_advanced</action>
+					<action function="set">tw_has_action2=0</action>
+					<action function="set">tw_terminal_location=/</action>
+					<action function="set">tw_action=terminalcommand</action>
+					<action function="set">tw_action_param=/sbin/winre-gui.sh /sbin/winre-pram.sh summary</action>
+					<action function="set">winre_busy_title=Checking the PRAM log</action>
+					<action function="set">winre_done_title=Persistent RAM log</action>
+					<action function="set">winre_done_sub=Full report: /sdcard/WinRE/pram-latest.txt</action>
+					<action function="clear"/>
+					<action function="page">winre_run</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_check"/>
+				<placement x="%winre_icon_x%" y="%winre_r1_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r1_title_y%"/>
+				<text>Check PRAM</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r1_desc_y%"/>
+				<text>Decode the crash ring left by the last boot</text>
+			</text>
+
+			<!-- Collect diagnostics -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r2_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_operation_state=0</action>
+					<action function="set">tw_back=winre_advanced</action>
+					<action function="set">tw_has_action2=0</action>
+					<action function="set">tw_terminal_location=/</action>
+					<action function="set">tw_action=terminalcommand</action>
+					<action function="set">tw_action_param=/sbin/winre-gui.sh /sbin/winre-debug.sh</action>
+					<action function="set">winre_busy_title=Collecting diagnostics</action>
+					<action function="set">winre_done_title=Diagnostics collected</action>
+					<action function="set">winre_done_sub=Saved to /sdcard/WinRE</action>
+					<action function="clear"/>
+					<action function="page">winre_run</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_save"/>
+				<placement x="%winre_icon_x%" y="%winre_r2_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r2_title_y%"/>
+				<text>Collect diagnostics</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r2_desc_y%"/>
+				<text>PRAM, dmesg, partitions and logs to /sdcard/WinRE</text>
+			</text>
+
+			<!-- Command Prompt -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r3_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_terminal_location=/tmp</action>
+					<action function="page">terminalcommand</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_debug"/>
+				<placement x="%winre_icon_x%" y="%winre_r3_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r3_title_y%"/>
+				<text>Command Prompt</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r3_desc_y%"/>
+				<text>Full busybox shell with the recovery still running</text>
+			</text>
+
+			<!-- More options -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r4_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_advanced2</action>
+			</button>
+			<image>
+				<image resource="winre_ic_continue"/>
+				<placement x="%winre_icon_x%" y="%winre_r4_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r4_title_y%"/>
+				<text>More options</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r4_desc_y%"/>
+				<text>Erase PRAM, full TWRP, Download mode</text>
+			</text>
+
+			<action>
+				<condition var1="winre_push" op="!=" var2="0"/>
+				<actions>
+					<action function="page">winre_push</action>
+				</actions>
+			</action>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">winre_troubleshoot</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<page name="winre_advanced2">
+			<background color="%winre_bg%"/>
+
+			<button>
+				<placement x="0" y="%winre_back_hit_y%" w="240" h="180"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_advanced</action>
+			</button>
+			<image>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_back_x%" y="%winre_back_y%" placement="4"/>
+			</image>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%winre_margin%" y="%winre_hdr_y%"/>
+				<text>More options</text>
+			</text>
+
+			<!-- Erase PRAM -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r1_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_operation_state=0</action>
+					<action function="set">tw_back=winre_advanced2</action>
+					<action function="set">tw_has_action2=0</action>
+					<action function="set">tw_terminal_location=/</action>
+					<action function="set">tw_action=terminalcommand</action>
+					<action function="set">tw_action_param=/sbin/winre-gui.sh /sbin/winre-pram.sh erase</action>
+					<action function="set">winre_busy_title=Erasing the PRAM log</action>
+					<action function="set">winre_done_title=PRAM log erased</action>
+					<action function="set">winre_done_sub=A copy was saved to /sdcard/WinRE first</action>
+					<action function="set">winre_confirm_h=Erase PRAM</action>
+					<action function="set">winre_confirm_l1=Everything the last boot recorded in the persistent</action>
+					<action function="set">winre_confirm_l2=ring is cleared. A copy is saved to /sdcard first, so a</action>
+					<action function="set">winre_confirm_l3=capture is never lost by pressing this button.</action>
+					<action function="set">winre_confirm_btn=Erase</action>
+					<action function="page">winre_confirm</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_erase"/>
+				<placement x="%winre_icon_x%" y="%winre_r1_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r1_title_y%"/>
+				<text>Erase PRAM</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r1_desc_y%"/>
+				<text>Clear the ring so the next boot starts from empty</text>
+			</text>
+
+			<!-- Full TWRP interface -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r2_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_clear_destination=twrp_main2</action>
+					<action function="page">clear_vars</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_disk"/>
+				<placement x="%winre_icon_x%" y="%winre_r2_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r2_title_y%"/>
+				<text>Full TWRP interface</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r2_desc_y%"/>
+				<text>Install, backup, restore, mount, partition tools</text>
+			</text>
+
+			<!-- Restart to Download mode -->
+			<button>
+				<placement x="%winre_margin%" y="%winre_r3_y%" w="%winre_tile_w%" h="%winre_tile_h%"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">winre_go_download</action>
+			</button>
+			<image>
+				<image resource="winre_ic_download"/>
+				<placement x="%winre_icon_x%" y="%winre_r3_icon_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<font resource="winre_title"/>
+				<placement x="%winre_text_x%" y="%winre_r3_title_y%"/>
+				<text>Restart to Download mode</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_text_x%" y="%winre_r3_desc_y%"/>
+				<text>Odin / Heimdall recovery path if a flash goes wrong</text>
+			</text>
+
+			<action>
+				<condition var1="winre_push" op="!=" var2="0"/>
+				<actions>
+					<action function="page">winre_push</action>
+				</actions>
+			</action>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">winre_advanced</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<!-- ============================ confirm =========================== -->
+		<!-- A generic confirmation. The tile that leads here has already set the
+		     winre_run action variables AND the winre_confirm_* text, so "Run"
+		     only has to navigate; nothing about the pending action lives on this
+		     page. -->
+		<page name="winre_confirm">
+			<background color="%winre_bg%"/>
+
+			<button>
+				<placement x="0" y="%winre_back_hit_y%" w="240" h="180"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">%tw_back%</action>
+			</button>
+			<image>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_back_x%" y="%winre_back_y%" placement="4"/>
+			</image>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%winre_margin%" y="%winre_hdr_y%"/>
+				<text>%winre_confirm_h%</text>
+			</text>
+
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_margin%" y="%winre_r1_y%"/>
+				<text>%winre_confirm_l1%</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_margin%" y="%winre_p2_y%"/>
+				<text>%winre_confirm_l2%</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_margin%" y="%winre_p3_y%"/>
+				<text>%winre_confirm_l3%</text>
+			</text>
+
+			<button>
+				<placement x="%winre_margin%" y="%winre_btn_row_y%" w="400" h="110"/>
+				<fill color="%winre_btn%"/>
+				<highlight color="%winre_btn_hi%"/>
+				<font resource="winre_title" color="%winre_text%"/>
+				<text>%winre_confirm_btn%</text>
+				<actions>
+					<action function="clear"/>
+					<action function="page">winre_run</action>
+				</actions>
+			</button>
+
+			<button>
+				<placement x="%winre_btn2_x%" y="%winre_btn_row_y%" w="400" h="110"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<font resource="winre_title" color="%winre_text%"/>
+				<text>Cancel</text>
+				<action function="page">%tw_back%</action>
+			</button>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">%tw_back%</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+		</page>
+
+		<!-- ============================== run ============================= -->
+		<!-- Runs %tw_action% and streams its stdout into the console, then hands
+		     over to winre_output once TWRP reports the operation finished. Same
+		     handshake the stock action_page uses. NEVER use openrecoveryscript
+		     here: it reboots to Android whenever the script it runs succeeds. -->
+		<page name="winre_run">
+			<background color="%winre_bg%"/>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%winre_margin%" y="%winre_hdr_y%"/>
+				<text>%winre_busy_title%</text>
+			</text>
+
+			<console>
+				<placement x="%winre_margin%" y="%winre_console_y%" w="%winre_tile_w%" h="%winre_console_h%"/>
+				<background color="%winre_console_bg%"/>
+				<color foreground="%winre_text%" background="%winre_console_bg%" scroll="%winre_console_bg%"/>
+				<font resource="winre_mono" color="%winre_text%"/>
+				<fastscroll rectcolor="%winre_text_dim%" w="24" rectw="24" recth="108"/>
+			</console>
+
+			<action>
+				<condition var1="tw_operation_state" var2="1"/>
+				<actions>
+					<action function="page">winre_output</action>
+				</actions>
+			</action>
+
+			<action>
+				<condition var1="tw_has_action2" var2="0"/>
+				<actions>
+					<action function="%tw_action%">%tw_action_param%</action>
+				</actions>
+			</action>
+
+			<action>
+				<condition var1="tw_has_action2" var2="1"/>
+				<actions>
+					<action function="%tw_action%">%tw_action_param%</action>
+					<action function="%tw_action2%">%tw_action2_param%</action>
+				</actions>
+			</action>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">%tw_back%</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<page name="winre_output">
+			<background color="%winre_bg%"/>
+
+			<button>
+				<placement x="0" y="%winre_back_hit_y%" w="240" h="180"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">%tw_back%</action>
+			</button>
+			<image>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_back_x%" y="%winre_back_y%" placement="4"/>
+			</image>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%winre_margin%" y="%winre_hdr_y%"/>
+				<text>%winre_done_title%</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%winre_margin%" y="%winre_sub_y%"/>
+				<text>%winre_done_sub%</text>
+			</text>
+
+			<console>
+				<placement x="%winre_margin%" y="%winre_console_y%" w="%winre_tile_w%" h="%winre_console_h%"/>
+				<background color="%winre_console_bg%"/>
+				<color foreground="%winre_text%" background="%winre_console_bg%" scroll="%winre_console_bg%"/>
+				<font resource="winre_mono" color="%winre_text%"/>
+				<fastscroll rectcolor="%winre_text_dim%" w="24" rectw="24" recth="108"/>
+			</console>
+
+			<button>
+				<placement x="%winre_margin%" y="%winre_out_btn_y%" w="400" h="110"/>
+				<fill color="%winre_btn%"/>
+				<highlight color="%winre_btn_hi%"/>
+				<font resource="winre_title" color="%winre_text%"/>
+				<text>Back</text>
+				<action function="page">%tw_back%</action>
+			</button>
+
+			<button>
+				<placement x="%winre_btn2_x%" y="%winre_out_btn_y%" w="400" h="110"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<font resource="winre_title" color="%winre_text%"/>
+				<text>Home</text>
+				<action function="page">main</action>
+			</button>
+
+			<action>
+				<condition var1="winre_push" op="!=" var2="0"/>
+				<actions>
+					<action function="page">winre_push</action>
+				</actions>
+			</action>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">%tw_back%</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<!-- ======================== power transitions ==================== -->
+		<page name="winre_go_system">
+			<background color="%winre_bg%"/>
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="24" render="1"/>
+				<loop frame="1"/>
+			</animation>
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
+				<text>Please wait</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
+				<text>Continuing to Windows</text>
+			</text>
+			<action>
+				<action function="reboot">system</action>
+			</action>
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<page name="winre_go_recovery">
+			<background color="%winre_bg%"/>
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="24" render="1"/>
+				<loop frame="1"/>
+			</animation>
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
+				<text>Please wait</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
+				<text>Restarting into recovery</text>
+			</text>
+			<action>
+				<action function="reboot">recovery</action>
+			</action>
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<page name="winre_go_poweroff">
+			<background color="%winre_bg%"/>
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="24" render="1"/>
+				<loop frame="1"/>
+			</animation>
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
+				<text>Please wait</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
+				<text>Turning off your PC</text>
+			</text>
+			<action>
+				<action function="reboot">poweroff</action>
+			</action>
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<page name="winre_go_download">
+			<background color="%winre_bg%"/>
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="24" render="1"/>
+				<loop frame="1"/>
+			</animation>
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
+				<text>Please wait</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
+				<text>Restarting into Download mode</text>
+			</text>
+			<action>
+				<action function="reboot">download</action>
+			</action>
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+	</pages>
+</recovery>

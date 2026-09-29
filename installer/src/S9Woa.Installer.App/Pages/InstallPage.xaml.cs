@@ -300,6 +300,8 @@ public sealed partial class InstallPage : Page, IWizardStep
             return false;
         }
         await new BootRouteService(twrp).ClearBootRequestAsync(log, ct);
+        // Neutralise a stale ui.zip theme override for this boot (baked heal covers the next one).
+        await twrp.RemoveStaleThemeOverrideAsync(ct);
         return true;
     }
 
@@ -508,13 +510,21 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             await twrp.UnmountAsync("/sdcard", ct);
         }
-        await new TransferService(twrp).WriteRawImageAsync(PartitionMap.WindowsTarget, AppServices.WindowsImagePath,
-            new RawWriteOptions { Verify = AppServices.VerifyWrites }, mountToEnsureUnmounted: "/data", log: log, ct: ct);
-
-        if (Directory.Exists(AppServices.EspDirectory))
+        try
         {
-            log.Report("Writing the Windows boot files...");
-            await new BootFilesService(twrp).WriteAsync(AppServices.EspDirectory, log, ct);
+            await new TransferService(twrp).WriteRawImageAsync(PartitionMap.WindowsTarget, AppServices.WindowsImagePath,
+                new RawWriteOptions { Verify = AppServices.VerifyWrites }, mountToEnsureUnmounted: "/data", log: log, ct: ct);
+
+            if (Directory.Exists(AppServices.EspDirectory))
+            {
+                log.Report("Writing the Windows boot files...");
+                await new BootFilesService(twrp).WriteAsync(AppServices.EspDirectory, log, ct);
+            }
+        }
+        finally
+        {
+            // Take the "Installing Windows" screen down once the writing is done.
+            await twrp.ClearInstallStatusAsync(CancellationToken.None);
         }
         return (true, AppServices.VerifyWrites
             ? "Windows and boot files written and verified on the phone."
@@ -556,6 +566,7 @@ public sealed partial class InstallPage : Page, IWizardStep
             return (false, "The UEFI image is not set up. Add it on the Set up page, then press Resume.");
         }
         await new TransferService(twrp).WriteWholePartitionAsync(PartitionMap.UefiTarget, image, log, ct, verify: AppServices.VerifyWrites);
+        await twrp.ClearInstallStatusAsync(CancellationToken.None);
         return (true, $"UEFI installed to BOOT{note}. RECOVERY keeps TWRP.");
     }
 
@@ -567,23 +578,60 @@ public sealed partial class InstallPage : Page, IWizardStep
             return (true, "Unplug the phone and power it on to start Windows.");
         }
         var modules = AppServices.Toolset.TwrpModulesDirectory;
-        if (dev.Mode == DeviceMode.Recovery && AppServices.Twrp(dev.Serial) is { } twrp)
+        for (var attempt = 1; ; attempt++)
         {
-            // A leftover boot-recovery request or pending watchdog record would send the phone straight back to TWRP.
-            await new BootRouteService(twrp).ClearAsync(modules, log, ct);
-            await twrp.ShellAsync("umount /data 2>/dev/null; umount /cache 2>/dev/null; umount /sdcard 2>/dev/null; sync; true", ct);
-        }
-        log.Report("Restarting into Windows...");
-        await AppServices.Device.RebootAsync(dev.Serial, RebootTarget.System, ct);
+            if (attempt > 1)
+            {
+                dev = await RefreshDeviceAsync(ct) ?? dev;
+            }
+            if (dev.Mode == DeviceMode.Recovery && AppServices.Twrp(dev.Serial) is { } twrp)
+            {
+                // A leftover boot-recovery request or pending watchdog record would send the phone straight back to TWRP.
+                await new BootRouteService(twrp).ClearAsync(modules, log, ct);
+                await twrp.ClearInstallStatusAsync(ct);
+                await twrp.ShellAsync("umount /data 2>/dev/null; umount /cache 2>/dev/null; umount /sdcard 2>/dev/null; sync; true", ct);
+            }
+            log.Report(attempt == 1 ? "Restarting into Windows..." : "Restarting into Windows again...");
+            await AppServices.Device.RebootAsync(dev.Serial, RebootTarget.System, ct);
 
-        // Windows exposes no adb, so success is the phone staying away; a failed start comes back to TWRP.
+            var (returned, after, record) = await WatchFirstBootAsync(dev.Serial, modules, log, ct);
+            if (!returned)
+            {
+                return (true, "Windows is starting. The first start and setup take several minutes and restart the phone once. "
+                    + "If it stays on the Samsung logo for more than 5 minutes, hold Volume Down + Power to restart it.");
+            }
+            // After a forced restart the record is in a state TWRP can't acknowledge, so the next start only
+            // latches: it finds a stale boot owner and returns in ~25 s without trying Windows. That latch can
+            // be acknowledged, and then one real attempt is allowed.
+            if (attempt == 1 && after < QuickBounce && record is { IsRecoveryPending: true, Reason: RecoveryRecord.StaleBootOwnerReason })
+            {
+                log.Report("The firmware's recovery latch sent the phone back without trying Windows (expected once after a forced restart). "
+                    + "Acknowledging it and trying again...");
+                continue;
+            }
+            return (false, "Windows did not start; the phone returned to TWRP"
+                + (record is null ? "." : $" (watchdog record: {record}).")
+                + " Press Resume to try again, or open Device tools to collect diagnostics.");
+        }
+    }
+
+    /// <summary>A return to TWRP faster than this means Windows was never attempted.</summary>
+    private static readonly TimeSpan QuickBounce = TimeSpan.FromSeconds(75);
+
+    /// <summary>
+    /// Windows exposes no adb, so success is the phone staying away for four minutes; a failed start
+    /// comes back to TWRP. Returns whether it came back, how long after the restart, and the record.
+    /// </summary>
+    private static async Task<(bool Returned, TimeSpan After, RecoveryRecord? Record)> WatchFirstBootAsync(
+        string serial, string? modules, IProgress<string> log, CancellationToken ct)
+    {
+        var started = DateTime.UtcNow;
         var gone = false;
-        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(4);
-        while (DateTime.UtcNow < deadline)
+        while (DateTime.UtcNow - started < TimeSpan.FromMinutes(4))
         {
             await Task.Delay(TimeSpan.FromSeconds(5), ct);
-            var devices = await AppServices.Adb.ListDevicesAsync(ct);
-            var phone = devices.FirstOrDefault(d => d.Serial == dev.Serial);
+            var devices = await AppServices.Adb!.ListDevicesAsync(ct);
+            var phone = devices.FirstOrDefault(d => d.Serial == serial);
             if (phone is null)
             {
                 gone = true;
@@ -591,20 +639,22 @@ public sealed partial class InstallPage : Page, IWizardStep
             }
             if (gone && phone.State == AdbState.Recovery)
             {
-                log.Report("The phone came back to TWRP; reading why...");
+                var after = DateTime.UtcNow - started;
+                log.Report($"The phone came back to TWRP after {after.TotalSeconds:0} s; reading why...");
                 await Task.Delay(TimeSpan.FromSeconds(15), ct);
                 RecoveryRecord? record = null;
-                if (AppServices.Twrp(dev.Serial) is { } back)
+                if (AppServices.Twrp(serial) is { } back)
                 {
                     record = await new BootRouteService(back).ReadRecordAsync(modules, ct);
                 }
-                return (false, "Windows did not start; the phone returned to TWRP"
-                    + (record is null ? "." : $" (watchdog record: {record}).")
-                    + " Press Resume to try again, or open Device tools to collect diagnostics.");
+                if (record is not null)
+                {
+                    log.Report($"Watchdog record: {record}.");
+                }
+                return (true, after, record);
             }
         }
-        return (true, "Windows is starting. The first start and setup take several minutes and restart the phone once. "
-            + "If it stays on the Samsung logo for more than 5 minutes, hold Volume Down + Power to restart it.");
+        return (false, DateTime.UtcNow - started, null);
     }
 
     private void Report(InfoBarSeverity severity, string title, string message, (string Label, Action Run)? action = null)

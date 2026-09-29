@@ -1,0 +1,325 @@
+// SPDX-License-Identifier: BSD-2-Clause-Patent
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace S9Woa.Installer.Core.Twrp;
+
+/// <summary>What a candidate base image is, so callers can decide how to treat it.</summary>
+public enum BaseImageKind
+{
+    /// <summary>The official TWRP 3.7.0_9-0 for star2lte, ready to build from.</summary>
+    OfficialTwrp,
+
+    /// <summary>Already a WinRE build (from us or the research tool); flash as-is.</summary>
+    WinReBuild,
+
+    /// <summary>Neither; refuse.</summary>
+    Unknown,
+}
+
+/// <summary>The result of a successful build.</summary>
+public sealed record WinReBuildResult(byte[] Image, string Sha256, string BuilderVersion, string BaseSha256)
+{
+    public int Bytes => Image.Length;
+}
+
+/// <summary>
+/// Builds the WinRE-look recovery on the end user's PC from the official TWRP
+/// image: it verifies the base is exactly TWRP 3.7.0_9-0 for star2lte, applies
+/// the four-byte power-off route patch to the kernel, replaces and extends the
+/// theme with the embedded WinRE pages, procedural art and Segoe fonts copied
+/// from the user's own Windows, bakes in the /sbin scripts and the two GPL
+/// kernel modules, patches init.recovery.usb.rc so adb survives a TWRP crash,
+/// writes a builder marker, and repacks. It asserts the output fits RECOVERY and
+/// that the kernel (bar the patch), device-tree and second stage are unchanged.
+/// Deterministic: the same base image and fonts produce the same bytes.
+///
+/// This is the C# counterpart of tools/twrp-winre/build.py and shares the same
+/// committed theme, scripts and art.
+/// </summary>
+public sealed class WinReTwrpBuilder
+{
+    public const string BuilderVersion = "winre-1";
+
+    /// <summary>SHA-256 of the official twrp-3.7.0_9-0-star2lte.img from twrp.me.</summary>
+    public const string OfficialTwrpSha256 = "f674dab0134f3c929982077b6a3a8de7df209a45c76ead80bc009381bcd835e1";
+
+    /// <summary>Length of that official file (its last section ends here, no partition padding).</summary>
+    public const int OfficialTwrpBytes = 42_670_080;
+
+    private const int ModuleDirMode = 0x1FF; // directory 0755 handled by cpio; files 0644.
+    private const string ModulePath = "sbin/s9woa";
+
+    private static readonly string[] FontMap =
+    [
+        // dest ramdisk name : Windows font file
+        "winre-light.ttf:segoeuil.ttf",
+        "winre-semilight.ttf:segoeuisl.ttf",
+        "winre-regular.ttf:segoeui.ttf",
+    ];
+
+    /// <summary>Default Windows fonts directory.</summary>
+    public static string DefaultFontsDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
+
+    /// <summary>Classify a candidate .img: official TWRP, an existing WinRE build, or unknown.</summary>
+    public static BaseImageKind Classify(byte[] image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (MatchesOfficial(image))
+        {
+            return BaseImageKind.OfficialTwrp;
+        }
+        try
+        {
+            var boot = AndroidBootImage.Parse(image);
+            var cpio = CpioArchive.Parse(Lzma.LzmaAlone.Decompress(boot.Ramdisk));
+            if (cpio.Get("twres/winre.xml") is not null || cpio.Get("twres/winre-build.txt") is not null
+                || cpio.Get("sbin/winre-statuswatch.sh") is not null || cpio.Get("sbin/winre-pushwatch.sh") is not null)
+            {
+                return BaseImageKind.WinReBuild;
+            }
+        }
+        catch (Exception e) when (e is InvalidDataException or InvalidOperationException)
+        {
+            // Not a boot image we understand.
+        }
+        return BaseImageKind.Unknown;
+    }
+
+    public static bool MatchesOfficial(byte[] image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        if (Sha256(image) == OfficialTwrpSha256)
+        {
+            return true;
+        }
+        // Accept a partition dump padded with zeros to the RECOVERY size whose
+        // leading OfficialTwrpBytes are the official image and the rest is zero.
+        if (image.Length <= OfficialTwrpBytes)
+        {
+            return false;
+        }
+        return !image.AsSpan(OfficialTwrpBytes).ContainsAnyExcept((byte)0)
+            && Sha256(image.AsSpan(0, OfficialTwrpBytes).ToArray()) == OfficialTwrpSha256;
+    }
+
+    private static byte[] OfficialPayload(byte[] image) =>
+        image.Length == OfficialTwrpBytes ? image : image.AsSpan(0, OfficialTwrpBytes).ToArray();
+
+    /// <summary>
+    /// Build the WinRE recovery image. <paramref name="fontsDirectory"/> defaults
+    /// to the user's Windows fonts; <paramref name="modulesDirectory"/> overrides
+    /// the embedded kernel modules if supplied (else the embedded ones are used).
+    /// </summary>
+    public WinReBuildResult Build(byte[] baseImage, string? fontsDirectory = null, string? modulesDirectory = null,
+        IList<string>? report = null)
+    {
+        ArgumentNullException.ThrowIfNull(baseImage);
+        var baseSha = Sha256(baseImage);
+        if (!MatchesOfficial(baseImage))
+        {
+            throw new InvalidOperationException(
+                "This is not the official TWRP 3.7.0_9-0 for star2lte (checked by SHA-256). "
+                + "Download twrp-3.7.0_9-0-star2lte.img from twrp.me and choose it on the Set up page.");
+        }
+        var raw = OfficialPayload(baseImage);
+        fontsDirectory ??= DefaultFontsDirectory;
+
+        var boot = AndroidBootImage.Parse(raw);
+        var baseKernel = boot.Kernel;
+        var baseDt = boot.Dt;
+        var baseSecond = boot.Second;
+        if (!boot.Serialize(refreshId: false).AsSpan().SequenceEqual(raw))
+        {
+            throw new InvalidOperationException("Boot image does not round-trip; refusing to build.");
+        }
+        if (boot.Tail.AsSpan().ContainsAnyExcept((byte)0))
+        {
+            throw new InvalidOperationException("Recovery partition tail is not zero fill; not safe to re-pad.");
+        }
+
+        // Power-off route patch (kernel; hash/pattern gated).
+        boot.Kernel = PowerOffRoutePatch.Patch(boot.Kernel);
+        report?.Add("kernel: power-off route patched (4 bytes)");
+
+        var plain = Lzma.LzmaAlone.Decompress(boot.Ramdisk);
+        var cpio = CpioArchive.Parse(plain);
+        if (!cpio.Serialize().AsSpan().SequenceEqual(plain))
+        {
+            throw new InvalidOperationException("cpio does not round-trip; refusing to build.");
+        }
+
+        var twres = cpio.Get("twres/ui.xml") is not null ? "twres" : "/twres";
+        if (cpio.Get($"{twres}/ui.xml") is null)
+        {
+            throw new InvalidOperationException("No twres/ui.xml in the ramdisk.");
+        }
+
+        var vars = WinReTheme.BuildVariables();
+        var icons = WinReResources.IconNames();
+        var ui = Text(cpio.Get($"{twres}/ui.xml")!);
+        var portrait = Text(cpio.Get($"{twres}/portrait.xml")!);
+        if (cpio.Get($"{twres}/splash.xml") is null)
+        {
+            throw new InvalidOperationException("No twres/splash.xml in the ramdisk.");
+        }
+
+        var uiNew = WinReTheme.PatchUiXml(ui, vars, icons);
+        var (portraitNew, refs) = WinReTheme.PatchPortraitXml(portrait);
+        var winre = WinReResources.ThemeText("winre.xml");
+        var splashNew = WinReTheme.PatchSplashXml(WinReResources.ThemeText("splash.xml"), vars);
+        report?.Add($"theme: ui.xml reskinned, portrait.xml renamed ({refs} refs), winre.xml {winre.Length} B");
+
+        // Recolour the teal stock images to Windows blue.
+        var recoloured = 0;
+        foreach (var name in WinReTheme.TealImages)
+        {
+            var e = cpio.Get($"{twres}/images/{name}.png");
+            if (e is not null)
+            {
+                e.Data = PngRecolor.AccentToBlue(e.Data);
+                recoloured++;
+            }
+        }
+        report?.Add($"images: recoloured {recoloured} teal stock image(s) to blue");
+
+        Utf8Put(cpio, $"{twres}/ui.xml", uiNew);
+        Utf8Put(cpio, $"{twres}/portrait.xml", portraitNew);
+        Utf8Put(cpio, $"{twres}/winre.xml", winre);
+        Utf8Put(cpio, $"{twres}/splash.xml", splashNew);
+
+        var images = WinReResources.Folder("images");
+        foreach (var (name, png) in images.OrderBy(k => k.Key, StringComparer.Ordinal))
+        {
+            cpio.PutFile($"{twres}/images/{name}", png);
+        }
+
+        // Fonts from the user's own Windows (full faces; the partition has slack).
+        foreach (var pair in FontMap)
+        {
+            var parts = pair.Split(':');
+            var src = Path.Combine(fontsDirectory, parts[1]);
+            if (!File.Exists(src))
+            {
+                throw new InvalidOperationException(
+                    $"The Windows font {parts[1]} was not found in {fontsDirectory}. It is copied from your own "
+                    + "Windows to give the recovery the Segoe UI look; the installer cannot proceed without it.");
+            }
+            cpio.PutFile($"{twres}/fonts/{parts[0]}", File.ReadAllBytes(src));
+        }
+
+        // /sbin scripts (LF line endings, mode 0755).
+        foreach (var (name, data) in WinReResources.Folder("sbin"))
+        {
+            cpio.PutFile($"sbin/{name}", NormalizeScript(data), 0x1FF); // 0755
+        }
+
+        // GPL kernel modules (ours), baked in.
+        var modules = LoadModules(modulesDirectory);
+        foreach (var (name, data) in modules)
+        {
+            cpio.PutFile($"{ModulePath}/{name}", data);
+        }
+        report?.Add($"modules: {modules.Count} kernel module(s) baked into /{ModulePath}");
+
+        PatchUsbRc(cpio);
+
+        var marker = $"builder={BuilderVersion}\nbase_sha256={baseSha}\n";
+        Utf8Put(cpio, $"{twres}/winre-build.txt", marker);
+
+        // Repack.
+        var plainNew = cpio.Serialize();
+        boot.Ramdisk = Lzma.LzmaAlone.Compress(plainNew);
+        if (!Lzma.LzmaAlone.Decompress(boot.Ramdisk).AsSpan().SequenceEqual(plainNew))
+        {
+            throw new InvalidOperationException("Recompressed ramdisk does not decompress back; aborting.");
+        }
+
+        var img = boot.Serialize(refreshId: true, keepTail: false);
+        if (img.Length > AndroidBootImage.RecoveryPartitionBytes)
+        {
+            throw new InvalidOperationException(
+                $"Built image does not fit RECOVERY: {img.Length:N0} > {AndroidBootImage.RecoveryPartitionBytes:N0} B.");
+        }
+
+        // Post-build assertions: only the ramdisk and the four patch bytes changed.
+        var rebuilt = AndroidBootImage.Parse(img);
+        if (!rebuilt.Dt.AsSpan().SequenceEqual(baseDt) || !rebuilt.Second.AsSpan().SequenceEqual(baseSecond))
+        {
+            throw new InvalidOperationException("Device-tree or second stage changed unexpectedly.");
+        }
+        if (!rebuilt.Kernel.AsSpan().SequenceEqual(PowerOffRoutePatch.Patch(baseKernel)))
+        {
+            throw new InvalidOperationException("Kernel is not exactly the base kernel plus the power-off patch.");
+        }
+
+        report?.Add($"image: {img.Length:N0} B, sha256 {Sha256(img)[..16]}...");
+        return new WinReBuildResult(img, Sha256(img), BuilderVersion, baseSha);
+    }
+
+    private IReadOnlyList<(string Name, byte[] Data)> LoadModules(string? overrideDir)
+    {
+        var names = new[] { "rwd1_ack.ko", "rwd1_evidence_reader.ko" };
+        var list = new List<(string, byte[])>();
+        foreach (var name in names)
+        {
+            if (overrideDir is not null && File.Exists(Path.Combine(overrideDir, name)))
+            {
+                list.Add((name, File.ReadAllBytes(Path.Combine(overrideDir, name))));
+            }
+            else
+            {
+                list.Add((name, WinReResources.Bytes($"modules.{name}")));
+            }
+        }
+        return list;
+    }
+
+    private const string UsbAnchor = "    setprop sys.usb.controller 10c00000.dwc3\n";
+
+    private static void PatchUsbRc(CpioArchive cpio)
+    {
+        var entry = cpio.Get("init.recovery.usb.rc");
+        if (entry is null)
+        {
+            return;
+        }
+        var text = Encoding.UTF8.GetString(entry.Data);
+        if (text.Contains("setprop sys.usb.config adb", StringComparison.Ordinal) || Count(text, UsbAnchor) != 1)
+        {
+            return;
+        }
+        var patch = UsbAnchor
+            + "    # adb must not depend on the recovery binary surviving: nothing else\n"
+            + "    # sets sys.usb.config, and TWRP skips its USB setup after a crash.\n"
+            + "    setprop sys.usb.config adb\n";
+        entry.Data = Encoding.UTF8.GetBytes(text.Replace(UsbAnchor, patch, StringComparison.Ordinal));
+    }
+
+    private static int Count(string s, string sub)
+    {
+        int n = 0, i = 0;
+        while ((i = s.IndexOf(sub, i, StringComparison.Ordinal)) >= 0)
+        {
+            n++;
+            i += sub.Length;
+        }
+        return n;
+    }
+
+    private static byte[] NormalizeScript(byte[] data)
+    {
+        var text = Encoding.UTF8.GetString(data).Replace("\r\n", "\n", StringComparison.Ordinal);
+        return Encoding.UTF8.GetBytes(text);
+    }
+
+    private static string Text(CpioEntry e) => Encoding.UTF8.GetString(e.Data);
+
+    private static void Utf8Put(CpioArchive cpio, string name, string text) =>
+        cpio.PutFile(name, Encoding.UTF8.GetBytes(text));
+
+    private static string Sha256(byte[] data) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(data)).ToLowerInvariant();
+}

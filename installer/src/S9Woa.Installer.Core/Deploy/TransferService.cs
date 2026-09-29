@@ -59,6 +59,8 @@ public sealed class TransferService
 
         var clock = Stopwatch.StartNew();
         long doneMiB = 0, zeroMiB = 0, lastReportMiB = 0;
+        var lastStatusMs = -10_000L;
+        await _twrp.SetInstallStatusAsync(WinReStatus.Copying(0, 0, plannedMiB * Mib), ct).ConfigureAwait(false);
         Task<Staged>? pending = null;
         await using var image = new FileStream(hostImageFile, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.Asynchronous);
         try
@@ -94,6 +96,15 @@ public sealed class TransferService
                 }
 
                 doneMiB += c.CountMiB;
+                // Refresh the on-phone "Installing Windows" status at most every ~5 s so the
+                // watcher can show a live phase caption without pushing a poke on every chunk.
+                if (clock.ElapsedMilliseconds - lastStatusMs >= 5000)
+                {
+                    lastStatusMs = clock.ElapsedMilliseconds;
+                    await _twrp.SetInstallStatusAsync(
+                        WinReStatus.Copying(WinReStatus.PercentOf(doneMiB, plannedMiB), doneMiB * Mib, plannedMiB * Mib), ct)
+                        .ConfigureAwait(false);
+                }
                 if (doneMiB - lastReportMiB >= 1024 || doneMiB == plannedMiB)
                 {
                     lastReportMiB = doneMiB;
@@ -223,6 +234,7 @@ public sealed class TransferService
                 $"Refusing to write: {Path.GetFileName(hostImageFile)} ({size} B) is larger than partition {partitionName} ({partSize} B).");
         }
 
+        await _twrp.SetInstallStatusAsync(WinReStatus.Firmware(), ct).ConfigureAwait(false);
         await _twrp.MakeDirAsync(_twrp.RamStagingDir, ct).ConfigureAwait(false);
         var staged = $"{_twrp.RamStagingDir}/{partitionName}.img";
         await _twrp.PushAsync(hostImageFile, staged, ct).ConfigureAwait(false);
