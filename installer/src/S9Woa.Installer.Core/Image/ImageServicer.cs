@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using S9Woa.Installer.Core.Processes;
 
@@ -12,14 +13,25 @@ public sealed partial class ImageServicer
     private readonly IProcessRunner _runner;
     private readonly string _dism;
     private readonly string _reg;
+    private readonly bool _canServicePackages;
 
-    public ImageServicer(IProcessRunner runner, string? system32 = null)
+    /// <param name="hostArchitecture">
+    /// Architecture of this PC. DISM can only run component-based servicing (capabilities,
+    /// features, component cleanup) with the image's own servicing stack, which an x64 PC cannot
+    /// load from an ARM64 image; those operations are skipped there. App removal, registry
+    /// defaults and file deletion work from any host.
+    /// </param>
+    public ImageServicer(IProcessRunner runner, string? system32 = null, Architecture? hostArchitecture = null)
     {
         _runner = runner;
         system32 ??= Environment.GetFolderPath(Environment.SpecialFolder.System);
         _dism = Path.Combine(system32, "dism.exe");
         _reg = Path.Combine(system32, "reg.exe");
+        _canServicePackages = (hostArchitecture ?? RuntimeInformation.OSArchitecture) == Architecture.Arm64;
     }
+
+    /// <summary>Operations that need the image's own (ARM64) servicing stack.</summary>
+    internal static bool NeedsImageServicingStack(SlimOperation op) => op is RemoveCapability or DisableFeature or ComponentCleanup;
 
     internal static string HiveMountName(RegistryHive hive) => hive switch
     {
@@ -68,6 +80,16 @@ public sealed partial class ImageServicer
         if (plan.Count == 0)
         {
             return;
+        }
+        if (!_canServicePackages)
+        {
+            var skipped = plan.Where(NeedsImageServicingStack).ToList();
+            if (skipped.Count > 0)
+            {
+                log?.Report($"Skipping {skipped.Count} component-servicing step(s) (capabilities, features, component cleanup): "
+                    + "they need an ARM64 PC to service an ARM64 image. Everything else in the profile still applies.");
+                plan = plan.Where(op => !NeedsImageServicingStack(op)).ToList();
+            }
         }
 
         var packages = plan.OfType<RemoveProvisionedAppx>().Any()

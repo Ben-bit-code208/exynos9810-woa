@@ -37,11 +37,9 @@ internal static class AppServices
     /// <summary>ESP boot files (produced by the VHDX build) copied to the phone's EFI partition.</summary>
     public static string EspDirectory => Path.Combine(WorkDirectory, "out", "esp");
 
-    /// <summary>NTFS Windows volume size inside the built VHDX, in MiB (fits the phone's USERDATA).</summary>
-    public static long WindowsVolumeMib { get; } = 52000;
-
-    /// <summary>OOBE answer-file choices for the built image.</summary>
-    public static Core.Image.UnattendOptions Unattend { get; set; } = new();
+    /// <summary>OOBE answer-file choices for the built image (the password is never persisted).</summary>
+    public static Core.Image.UnattendOptions Unattend { get; set; } =
+        new() { Username = string.IsNullOrWhiteSpace(State.AccountName) ? "S9" : State.AccountName };
 
     /// <summary>Last successful image build, if any.</summary>
     public static Core.Image.BuiltImage? Built { get; set; }
@@ -103,6 +101,7 @@ internal static class AppServices
     {
         State.MediaPath = MediaPath;
         State.SlimProfile = Profile.ToString();
+        State.AccountName = Unattend.Username;
         State.DeviceSerial = CurrentDevice?.Serial ?? State.DeviceSerial;
         State.DeviceBootloader = CurrentDevice?.Bootloader ?? State.DeviceBootloader;
         State.Save(DataDirectory);

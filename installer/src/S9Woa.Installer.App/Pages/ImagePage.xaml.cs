@@ -100,5 +100,6 @@ public sealed partial class ImagePage : Page, IWizardStep
             Username = name.Length == 0 ? "S9" : name,
             Password = AccountPassword.Password.Length == 0 ? null : AccountPassword.Password,
         };
+        AppServices.SaveState();
     }
 }

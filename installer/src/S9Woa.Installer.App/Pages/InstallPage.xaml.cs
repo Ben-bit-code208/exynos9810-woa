@@ -223,6 +223,17 @@ public sealed partial class InstallPage : Page, IWizardStep
             return (false, "TWRP is not set up. Add it on the Set up page, then press Resume.");
         }
         var resolved = await AppServices.TwrpFlasher.ResolveAsync(ct);
+        if (resolved is null && AppServices.HeimdallPath is not null && AppServices.Device is not null
+            && await RefreshDeviceAsync(ct) is { Mode: DeviceMode.Android or DeviceMode.Recovery } phone)
+        {
+            log.Report("Restarting the phone into Download mode...");
+            await AppServices.Device.RebootAsync(phone.Serial, RebootTarget.Download, ct);
+            for (var i = 0; i < 30 && resolved is null; i++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+                resolved = await AppServices.TwrpFlasher.ResolveAsync(ct);
+            }
+        }
         if (resolved is null)
         {
             var binding = Core.Toolset.DownloadModeDriver.Detect(new Core.Toolset.LocalMachineRegistry());
@@ -231,7 +242,7 @@ public sealed partial class InstallPage : Page, IWizardStep
                 : "Heimdall can't see the phone. Put it in Download mode (power off, hold Volume Down + Bixby + Power, then press Volume Up). "
                   + (binding.State == Core.Toolset.ToolState.Ready
                       ? "Then press Resume."
-                      : "The first time, open Set up > Download-mode USB driver > Open Zadig, select the Samsung device (04E8 685D), choose WinUSB and click Replace Driver. Then press Resume."));
+                      : "The first time, open Device tools or Set up > Download-mode USB driver > Open Zadig, select the Samsung device (04E8 685D), choose WinUSB and click Replace Driver. Then press Resume."));
         }
         await AppServices.TwrpFlasher.FlashRecoveryAsync(AppServices.TwrpImagePath, log, ct);
 
@@ -239,22 +250,76 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             return (true, "TWRP flashed. Boot into TWRP now (Volume Up + Bixby + Power).");
         }
-        log.Report("Waiting for TWRP. Boot it now: hold Volume Up + Bixby + Power.");
+        log.Report("Now boot TWRP: hold Volume Down + Power until the screen goes off, then immediately hold Volume Up + Bixby + Power.");
         try
         {
-            await AppServices.Device.WaitForModeAsync(AppServices.CurrentDevice.Serial, DeviceMode.Recovery,
-                TimeSpan.FromMinutes(3), log, ct);
-            return (true, "TWRP is running.");
+            AppServices.CurrentDevice = await AppServices.Device.WaitForModeAsync(AppServices.CurrentDevice.Serial, DeviceMode.Recovery,
+                TimeSpan.FromMinutes(5), log, ct);
+            return await SettleTwrpAsync(log, ct)
+                ? (true, "TWRP is running.")
+                : (false, "TWRP started but its connection is not settled yet. Wait a minute, then press Resume.");
         }
         catch (TimeoutException)
         {
-            return (false, "TWRP did not come up. Flash succeeded; boot TWRP manually, then press Resume.");
+            return (false, "TWRP did not come up. The flash succeeded; boot TWRP manually, then press Resume.");
         }
+    }
+
+    /// <summary>Re-reads the connected phone so stages act on its current mode (Android, TWRP, ...).</summary>
+    private static async Task<DeviceSnapshot?> RefreshDeviceAsync(CancellationToken ct)
+    {
+        if (AppServices.Adb is null)
+        {
+            return AppServices.CurrentDevice;
+        }
+        var devices = await AppServices.Adb.ListDevicesAsync(ct);
+        if (devices.Count != 1)
+        {
+            return AppServices.CurrentDevice = null;
+        }
+        var d = devices[0];
+        return AppServices.CurrentDevice = DeviceSnapshot.FromAdb(d,
+            d.State is AdbState.Device or AdbState.Recovery ? await AppServices.Adb.GetPropertiesAsync(d.Serial, ct) : null);
+    }
+
+    /// <summary>
+    /// TWRP's adb drops and SD access fail during its first minutes; wait until it has been up
+    /// for 150 s with the SD card mounted before staging anything through it.
+    /// </summary>
+    private static async Task<bool> SettleTwrpAsync(IProgress<string> log, CancellationToken ct)
+    {
+        var dev = AppServices.CurrentDevice;
+        var twrp = dev is null ? null : AppServices.Twrp(dev.Serial);
+        if (twrp is null)
+        {
+            return false;
+        }
+        for (var i = 0; i < 60; i++)
+        {
+            try
+            {
+                var up = await twrp.UptimeSecondsAsync(ct);
+                if (up >= 150 && await twrp.IsMountedAsync("/external_sd", ct))
+                {
+                    return true;
+                }
+                if (i == 0)
+                {
+                    log.Report($"Letting TWRP settle (up {up:0} s; needs 150 s and the SD card)...");
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // adb reconnecting; keep waiting.
+            }
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+        }
+        return false;
     }
 
     private static async Task<(bool, string)> RunBackupAsync(IProgress<string> log, CancellationToken ct)
     {
-        var dev = AppServices.CurrentDevice;
+        var dev = await RefreshDeviceAsync(ct);
         if (dev is null || dev.Mode != DeviceMode.Recovery)
         {
             return (false, "Boot the phone into TWRP first (the Install TWRP step).");
@@ -263,6 +328,10 @@ public sealed partial class InstallPage : Page, IWizardStep
         if (twrp is null)
         {
             return (false, "adb.exe not found.");
+        }
+        if (!await SettleTwrpAsync(log, ct))
+        {
+            return (false, "TWRP's connection hasn't settled (it needs about 2.5 minutes and the SD card). Press Resume shortly.");
         }
         var dir = Path.Combine(AppServices.BackupDirectory, dev.Serial);
         var manifest = await new BackupService(twrp).BackupAsync(dir, dev.Model ?? "SM-G965F", dev.Serial, log, ct);
@@ -309,7 +378,7 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             File.Delete(vhdx);
         }
-        var built = await new VhdxImageBuilder(AppServices.Runner).BuildAsync(vhdx, AppServices.WindowsVolumeMib + 300,
+        var built = await new VhdxImageBuilder(AppServices.Runner).BuildAsync(vhdx,
             AppServices.InstallImagePath!, AppServices.EditionIndex, drivers, AppServices.Profile,
             AppServices.Unattend, outDir, log, ct);
         AppServices.Built = built;
@@ -336,13 +405,14 @@ public sealed partial class InstallPage : Page, IWizardStep
 
     private static async Task<(bool, string)> RunPartitionAsync(CancellationToken ct)
     {
+        await RefreshDeviceAsync(ct);
         var twrp = RequireTwrp(out _, out var err);
         if (twrp is null)
         {
             return (false, err);
         }
         var parts = await twrp.ListPartitionsAsync(ct);
-        var required = new[] { PartitionMap.WindowsTarget, PartitionMap.UefiTarget };
+        var required = new[] { PartitionMap.WindowsTarget, PartitionMap.UefiTarget, PartitionMap.EfiSystemPartition, PartitionMap.RecoveryTarget };
         var missing = required.Where(n => !parts.Keys.Contains(n, StringComparer.OrdinalIgnoreCase)).ToList();
         if (missing.Count > 0)
         {
@@ -350,13 +420,14 @@ public sealed partial class InstallPage : Page, IWizardStep
         }
         var userdata = parts.Keys.First(k => k.Equals(PartitionMap.WindowsTarget, StringComparison.OrdinalIgnoreCase));
         var size = await twrp.PartitionSizeAsync(userdata, ct);
-        return size < 16L << 30
-            ? (false, $"{userdata} is only {size >> 30} GiB; Windows needs a larger target partition.")
-            : (true, $"Partitions verified. {userdata} is {size >> 30} GiB.");
+        return size != PartitionMap.WindowsBytes
+            ? (false, $"{userdata} is {size:N0} bytes, not the validated {PartitionMap.WindowsBytes:N0}. This phone's layout differs; stopping before any write.")
+            : (true, $"Partitions verified: {userdata} matches the validated layout ({size >> 20} MiB).");
     }
 
     private static async Task<(bool, string)> RunTransferAsync(IProgress<string> log, CancellationToken ct)
     {
+        await RefreshDeviceAsync(ct);
         var twrp = RequireTwrp(out _, out var err);
         if (twrp is null)
         {
@@ -366,8 +437,12 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             return (false, $"No Windows image at {AppServices.WindowsImagePath}. Run the Build the Windows image step first.");
         }
+        if (await twrp.IsMountedAsync("/sdcard", ct))
+        {
+            await twrp.UnmountAsync("/sdcard", ct);
+        }
         await new TransferService(twrp).WriteRawImageAsync(PartitionMap.WindowsTarget, AppServices.WindowsImagePath,
-            windowMiB: 256, mountToEnsureUnmounted: "/data", log: log, ct: ct);
+            windowMiB: 64, mountToEnsureUnmounted: "/data", log: log, ct: ct);
 
         if (Directory.Exists(AppServices.EspDirectory))
         {
@@ -379,6 +454,7 @@ public sealed partial class InstallPage : Page, IWizardStep
 
     private static async Task<(bool, string)> RunUefiAsync(IProgress<string> log, CancellationToken ct)
     {
+        await RefreshDeviceAsync(ct);
         var twrp = RequireTwrp(out _, out var err);
         if (twrp is null)
         {
@@ -394,7 +470,7 @@ public sealed partial class InstallPage : Page, IWizardStep
 
     private static async Task<(bool, string)> RunFirstBootAsync(CancellationToken ct)
     {
-        var dev = AppServices.CurrentDevice;
+        var dev = await RefreshDeviceAsync(ct);
         if (dev is null || AppServices.Device is null)
         {
             return (true, "Unplug the phone and power it on to start Windows.");

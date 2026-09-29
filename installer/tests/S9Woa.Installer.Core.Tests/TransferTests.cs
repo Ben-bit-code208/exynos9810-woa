@@ -20,9 +20,12 @@ public class TransferTests
 
         public FakePartitionRunner(string name, long sizeBytes)
         {
-            PartitionName = name;
+            // The phone's by-name links are upper case; callers use lower case on purpose.
+            PartitionName = name.ToUpperInvariant();
             Partition = new byte[sizeBytes];
         }
+
+        public int Pushes { get; private set; }
 
         public Task<ProcessResult> RunAsync(string fileName, IReadOnlyList<string> arguments, TimeSpan timeout,
             CancellationToken cancellationToken = default)
@@ -31,13 +34,20 @@ public class TransferTests
             if (verb == "push")
             {
                 _sd[arguments[4]] = File.ReadAllBytes(arguments[3]);
+                Pushes++;
                 return Ok("pushed");
             }
             var cmd = arguments[3];
             var dev = $"/dev/block/by-name/{PartitionName}";
+            if (cmd.StartsWith("ls -l /dev/block/by-name", StringComparison.Ordinal))
+            {
+                return Ok($"lrwxrwxrwx 1 root root 21 2026-09-29 12:00 {PartitionName} -> /dev/block/sda25\n");
+            }
             if (cmd.StartsWith("blockdev --getsize64", StringComparison.Ordinal))
             {
-                return Ok($"{Partition.Length}\n");
+                return cmd.EndsWith(dev, StringComparison.Ordinal)
+                    ? Ok($"{Partition.Length}\n")
+                    : Task.FromResult(new ProcessResult(1, "", "No such file or directory"));
             }
             if (cmd.Contains("/proc/mounts", StringComparison.Ordinal))
             {
@@ -58,6 +68,13 @@ public class TransferTests
             if (cmd.StartsWith("dd if=", StringComparison.Ordinal) && cmd.Contains($"of={dev}", StringComparison.Ordinal))
             {
                 var sd = Between(cmd, "if=", " ");
+                if (sd == "/dev/zero")
+                {
+                    var zseek = long.Parse(Between(cmd, "seek=", " "));
+                    var zcount = long.Parse(Between(cmd, "count=", " "));
+                    Array.Clear(Partition, (int)(zseek * Mib), (int)(zcount * Mib));
+                    return Ok("");
+                }
                 var src = _sd[sd];
                 if (cmd.Contains("seek=", StringComparison.Ordinal))
                 {
@@ -119,6 +136,56 @@ public class TransferTests
             File.Delete(image);
         }
     }
+
+    [Fact]
+    public async Task ZeroWindowsAreFilledOnThePhoneNotPushed()
+    {
+        var image = Path.GetTempFileName();
+        try
+        {
+            // MiB 0 data, MiB 1-2 zero, MiB 3 data; the phone partition starts full of stale bytes.
+            var bytes = new byte[4 * Mib];
+            new Random(9).NextBytes(bytes.AsSpan(0, (int)Mib));
+            new Random(10).NextBytes(bytes.AsSpan(3 * (int)Mib, (int)Mib));
+            await File.WriteAllBytesAsync(image, bytes);
+
+            var runner = new FakePartitionRunner("userdata", 6 * Mib);
+            new Random(11).NextBytes(runner.Partition);
+            var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
+            await new TransferService(twrp).WriteRawImageAsync("USERDATA", image, windowMiB: 1);
+
+            Assert.Equal(bytes, runner.Partition.AsSpan(0, 4 * (int)Mib).ToArray());
+            Assert.Equal(2, runner.Pushes); // only the two data windows crossed USB
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
+    public async Task RefusesUnknownPartition()
+    {
+        var image = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(image, new byte[1 * Mib]);
+            var runner = new FakePartitionRunner("userdata", 8 * Mib);
+            var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new TransferService(twrp).WriteRawImageAsync("system", image, 1));
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Theory]
+    [InlineData("/sbin/mkfs.fat", "/sbin/mkfs.fat -F 32 -S 4096 -n SYSTEM /dev/block/by-name/SYSTEM")]
+    [InlineData("/system/bin/newfs_msdos", "/system/bin/newfs_msdos -F 32 -S 4096 -L SYSTEM /dev/block/by-name/SYSTEM")]
+    public void FormatsEspAsFat32With4KSectors(string tool, string expected) =>
+        Assert.Equal(expected, BootFilesService.FormatCommand(tool, "/dev/block/by-name/SYSTEM"));
 
     [Fact]
     public async Task RefusesImageLargerThanPartition()

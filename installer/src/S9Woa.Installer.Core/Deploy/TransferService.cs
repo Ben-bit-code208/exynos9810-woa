@@ -35,6 +35,7 @@ public sealed class TransferService
             throw new ArgumentOutOfRangeException(nameof(windowMiB));
         }
 
+        partitionName = await _twrp.ResolvePartitionNameAsync(partitionName, ct).ConfigureAwait(false);
         var partSize = await _twrp.PartitionSizeAsync(partitionName, ct).ConfigureAwait(false);
         if (size > partSize)
         {
@@ -63,6 +64,8 @@ public sealed class TransferService
         var window = $"{_twrp.SdStagingDir}/window.bin";
         var totalMib = size / Mib;
         var tmp = Path.Combine(Path.GetTempPath(), $"s9woa-window-{Guid.NewGuid():N}.bin");
+        long zeroMib = 0;
+        long lastReportGiB = -1;
 
         await using (var stream = File.OpenRead(hostImageFile))
         {
@@ -70,17 +73,31 @@ public sealed class TransferService
             {
                 ct.ThrowIfCancellationRequested();
                 var countMib = Math.Min(windowMiB, totalMib - offsetMib);
-                var expected = await StageWindowAsync(stream, tmp, countMib * Mib, ct).ConfigureAwait(false);
+                var (expected, isZero) = await StageWindowAsync(stream, tmp, countMib * Mib, ct).ConfigureAwait(false);
 
-                await _twrp.PushAsync(tmp, window, ct).ConfigureAwait(false);
-                await _twrp.WritePartitionWindowAsync(window, partitionName, offsetMib, countMib, ct).ConfigureAwait(false);
+                if (isZero)
+                {
+                    // An all-zero window needs no transfer: the phone writes the zeros itself.
+                    await _twrp.ZeroPartitionWindowAsync(partitionName, offsetMib, countMib, ct).ConfigureAwait(false);
+                    zeroMib += countMib;
+                }
+                else
+                {
+                    await _twrp.PushAsync(tmp, window, ct).ConfigureAwait(false);
+                    await _twrp.WritePartitionWindowAsync(window, partitionName, offsetMib, countMib, ct).ConfigureAwait(false);
+                }
                 var actual = await _twrp.HashPartitionWindowAsync(partitionName, offsetMib, countMib, ct).ConfigureAwait(false);
                 if (!string.Equals(expected, actual, StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException(
                         $"Verification failed writing {partitionName} at {offsetMib} MiB (wrote {expected[..12]}…, read {actual[..12]}…).");
                 }
-                log?.Report($"  {partitionName}: {offsetMib + countMib}/{totalMib} MiB verified");
+                var doneMib = offsetMib + countMib;
+                if (doneMib / 1024 != lastReportGiB || doneMib == totalMib)
+                {
+                    lastReportGiB = doneMib / 1024;
+                    log?.Report($"  {partitionName}: {doneMib}/{totalMib} MiB written and verified ({zeroMib} MiB zero-filled on the phone)");
+                }
             }
         }
         await _twrp.RemoveAsync(window, ct).ConfigureAwait(false);
@@ -96,6 +113,7 @@ public sealed class TransferService
         {
             throw new InvalidOperationException($"{Path.GetFileName(hostImageFile)} is empty.");
         }
+        partitionName = await _twrp.ResolvePartitionNameAsync(partitionName, ct).ConfigureAwait(false);
         var partSize = await _twrp.PartitionSizeAsync(partitionName, ct).ConfigureAwait(false);
         if (size > partSize)
         {
@@ -118,9 +136,10 @@ public sealed class TransferService
         log?.Report($"  {partitionName}: {size} B written and verified.");
     }
 
-    private static async Task<string> StageWindowAsync(Stream source, string tmpFile, long length, CancellationToken ct)
+    private static async Task<(string Sha256, bool IsZero)> StageWindowAsync(Stream source, string tmpFile, long length, CancellationToken ct)
     {
         using var sha = SHA256.Create();
+        var isZero = true;
         await using (var dst = File.Create(tmpFile))
         {
             var buffer = new byte[1 << 20];
@@ -134,12 +153,13 @@ public sealed class TransferService
                     throw new EndOfStreamException("The image ended before the expected size.");
                 }
                 sha.TransformBlock(buffer, 0, read, null, 0);
+                isZero = isZero && !buffer.AsSpan(0, read).ContainsAnyExcept((byte)0);
                 await dst.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
                 remaining -= read;
             }
         }
         sha.TransformFinalBlock([], 0, 0);
-        return Convert.ToHexString(sha.Hash!).ToLowerInvariant();
+        return (Convert.ToHexString(sha.Hash!).ToLowerInvariant(), isZero);
     }
 
     private static async Task<string> HashFileAsync(string path, CancellationToken ct)

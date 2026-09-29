@@ -82,7 +82,8 @@ public class ImageTests
             Directory.CreateDirectory(Path.Combine(root, @"Windows\System32"));
             File.WriteAllText(Path.Combine(root, @"Windows\System32\ntoskrnl.exe"), "");
             var runner = new FakeRunner();
-            await new ImageServicer(runner, @"C:\sys").ApplyAsync(root, SlimPlan.For(SlimProfile.Lite));
+            await new ImageServicer(runner, @"C:\sys", System.Runtime.InteropServices.Architecture.Arm64)
+                .ApplyAsync(root, SlimPlan.For(SlimProfile.Lite));
 
             Assert.Contains(runner.Calls, c => c.Contains("/PackageName:Microsoft.BingNews_1_neutral_~_x", StringComparison.Ordinal));
             Assert.DoesNotContain(runner.Calls, c => c.Contains("WindowsCalculator", StringComparison.Ordinal) && c.Contains("/Remove", StringComparison.Ordinal));
@@ -98,6 +99,40 @@ public class ImageTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task X64HostSkipsComponentServicingButKeepsTheRest()
+    {
+        var root = Directory.CreateTempSubdirectory("s9woa-img").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, @"Windows\System32\Recovery"));
+            File.WriteAllText(Path.Combine(root, @"Windows\System32\ntoskrnl.exe"), "");
+            File.WriteAllText(Path.Combine(root, @"Windows\System32\Recovery\winre.wim"), "x");
+            var runner = new FakeRunner();
+            var log = new List<string>();
+            await new ImageServicer(runner, @"C:\sys", System.Runtime.InteropServices.Architecture.X64)
+                .ApplyAsync(root, SlimPlan.For(SlimProfile.Core), new SyncProgress(log.Add));
+
+            Assert.DoesNotContain(runner.Calls, c => c.Contains("/Remove-Capability", StringComparison.Ordinal)
+                                                    || c.Contains("/Get-Capabilities", StringComparison.Ordinal)
+                                                    || c.Contains("/Disable-Feature", StringComparison.Ordinal)
+                                                    || c.Contains("/Cleanup-Image", StringComparison.Ordinal));
+            Assert.Contains(runner.Calls, c => c.Contains("/Remove-ProvisionedAppxPackage", StringComparison.Ordinal));
+            Assert.Contains(runner.Calls, c => c.StartsWith("reg.exe add", StringComparison.Ordinal));
+            Assert.False(File.Exists(Path.Combine(root, @"Windows\System32\Recovery\winre.wim")));
+            Assert.Contains(log, l => l.Contains("need an ARM64 PC", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private sealed class SyncProgress(Action<string> report) : IProgress<string>
+    {
+        public void Report(string value) => report(value);
     }
 
     [Fact]

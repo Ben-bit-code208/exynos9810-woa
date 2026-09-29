@@ -68,6 +68,39 @@ public sealed partial class TwrpClient
     public async Task<IReadOnlyDictionary<string, string>> ListPartitionsAsync(CancellationToken ct = default) =>
         ParsePartitionLinks(await ShellCheckedAsync($"ls -l {ByName}", Quick, ct).ConfigureAwait(false));
 
+    /// <summary>
+    /// Returns the device's own spelling of a by-name link (this phone uses upper case, e.g.
+    /// <c>USERDATA</c>), matched case-insensitively. Throws if the partition does not exist.
+    /// </summary>
+    public async Task<string> ResolvePartitionNameAsync(string name, CancellationToken ct = default)
+    {
+        var links = await ListPartitionsAsync(ct).ConfigureAwait(false);
+        return links.Keys.FirstOrDefault(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException($"The phone has no partition named {name}.");
+    }
+
+    /// <summary>Seconds since TWRP booted.</summary>
+    public async Task<double> UptimeSecondsAsync(CancellationToken ct = default)
+    {
+        var text = (await ShellCheckedAsync("cut -d' ' -f1 /proc/uptime", Quick, ct).ConfigureAwait(false)).Trim();
+        return double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 0;
+    }
+
+    /// <summary>First available FAT formatter in TWRP, or null.</summary>
+    public async Task<string?> FindFatFormatterAsync(CancellationToken ct = default)
+    {
+        var r = await AdbAsync(["shell", "for t in mkfs.fat mkfs.vfat mkdosfs newfs_msdos; do command -v $t && break; done"], Quick, ct).ConfigureAwait(false);
+        var path = r.StdOut.Trim().Split('\n').FirstOrDefault()?.Trim();
+        return string.IsNullOrEmpty(path) ? null : path;
+    }
+
+    /// <summary>True when the partition starts with a FAT32 boot sector (type string "FAT32" at 0x52).</summary>
+    public async Task<bool> IsFat32Async(string name, CancellationToken ct = default)
+    {
+        var r = await AdbAsync(["shell", $"dd if={ByName}/{name} bs=1 skip=82 count=5 2>/dev/null"], Quick, ct).ConfigureAwait(false);
+        return r.StdOut.StartsWith("FAT32", StringComparison.Ordinal);
+    }
+
     public async Task<long> PartitionSizeAsync(string name, CancellationToken ct = default)
     {
         var text = (await ShellCheckedAsync($"blockdev --getsize64 {ByName}/{name}", Quick, ct).ConfigureAwait(false)).Trim();
@@ -94,6 +127,10 @@ public sealed partial class TwrpClient
     /// <summary>Writes a 1-MiB-aligned window of an SD file into a partition at <paramref name="seekMiB"/>.</summary>
     public Task WritePartitionWindowAsync(string sdFile, string name, long seekMiB, long countMiB, CancellationToken ct = default) =>
         ShellCheckedAsync($"dd if={sdFile} of={ByName}/{name} bs=1048576 seek={seekMiB} count={countMiB} conv=notrunc,fsync", Long, ct);
+
+    /// <summary>Fills a 1-MiB-aligned window of a partition with zeros on the phone (no USB transfer).</summary>
+    public Task ZeroPartitionWindowAsync(string name, long seekMiB, long countMiB, CancellationToken ct = default) =>
+        ShellCheckedAsync($"dd if=/dev/zero of={ByName}/{name} bs=1048576 seek={seekMiB} count={countMiB} conv=notrunc,fsync", Long, ct);
 
     /// <summary>SHA-256 of a 1-MiB-aligned window read back from a partition.</summary>
     public async Task<string> HashPartitionWindowAsync(string name, long skipMiB, long countMiB, CancellationToken ct = default)

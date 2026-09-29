@@ -35,26 +35,29 @@ public sealed class BackupService
     public async Task<BackupManifest> BackupAsync(string hostBackupDir, string deviceModel, string serial,
         IProgress<string>? log = null, CancellationToken ct = default)
     {
-        var partitions = await _twrp.ListPartitionsAsync(ct).ConfigureAwait(false);
+        var partitions = new Dictionary<string, string>(await _twrp.ListPartitionsAsync(ct).ConfigureAwait(false),
+            StringComparer.OrdinalIgnoreCase);
         var missingRequired = PartitionMap.RequiredBackup.Where(n => !partitions.ContainsKey(n)).ToList();
         if (missingRequired.Count > 0)
         {
             throw new InvalidOperationException(
                 $"The phone did not expose the required partition(s) {string.Join(", ", missingRequired)}. "
-                + "Make sure it is fully booted into TWRP with storage decrypted, then try again.");
+                + "Make sure it is fully booted into TWRP, then try again.");
         }
 
         await _twrp.MakeStagingDirAsync(ct).ConfigureAwait(false);
         Directory.CreateDirectory(hostBackupDir);
 
         var entries = new List<BackupEntry>();
-        foreach (var name in PartitionMap.IdentityBackup)
+        foreach (var wanted in PartitionMap.IdentityBackup)
         {
             ct.ThrowIfCancellationRequested();
-            if (!partitions.TryGetValue(name, out var node))
+            if (!partitions.TryGetValue(wanted, out var node))
             {
                 continue;
             }
+            // Use the phone's own spelling of the link (by-name is case-sensitive on the device).
+            var name = partitions.Keys.First(k => string.Equals(k, wanted, StringComparison.OrdinalIgnoreCase));
             log?.Report($"Backing up {name}...");
             var size = await _twrp.PartitionSizeAsync(name, ct).ConfigureAwait(false);
             var staged = $"{_twrp.SdStagingDir}/{name}.img";

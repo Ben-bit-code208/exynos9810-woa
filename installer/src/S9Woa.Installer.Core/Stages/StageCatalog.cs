@@ -75,6 +75,7 @@ public sealed class InstallState
     public string? DeviceBootloader { get; set; }
     public string? MediaPath { get; set; }
     public string? SlimProfile { get; set; }
+    public string? AccountName { get; set; }
     public Dictionary<string, StageRecord> Stages { get; set; } = [];
 
     public static string DefaultDirectory =>
