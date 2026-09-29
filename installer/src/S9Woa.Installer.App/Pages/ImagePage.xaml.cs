@@ -23,6 +23,11 @@ public sealed partial class ImagePage : Page, IWizardStep
         }).IsChecked = true;
         AccountPassword.Password = AppServices.Unattend.Password ?? "";
         AccountName.Text = AppServices.Unattend.Username;
+        if (AppServices.Toolset.LoadFirmwareCatalog() is { } catalog)
+        {
+            MediaHint.Text = $"Use Windows 11 ARM64 build {catalog.SupportedBuilds}. The phone's firmware starts one exact "
+                + "Windows build, so media with any other build can't boot yet. Validated with IoT Enterprise.";
+        }
         UpdateProfile();
         Validate();
     }

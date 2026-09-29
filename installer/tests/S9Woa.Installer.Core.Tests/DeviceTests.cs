@@ -36,6 +36,16 @@ public class DeviceTests
         Assert.Equal(2, props.Count);
     }
 
+    [Fact]
+    public void PrefersBootloaderModelInRecovery()
+    {
+        var props = AdbClient.ParseGetprop("[ro.product.model]: [Galaxy S9+]\n[ro.boot.em.model]: [SM-G965F]\n[ro.twrp.version]: [3.7.0_9-0]\n");
+        var snap = DeviceSnapshot.FromAdb(AdbClient.ParseDevices(
+            "List of devices attached\naa11bb22cc33dd44 recovery product:omni_star2lte model:Galaxy_S9_ device:star2lte\n")[0], props);
+        Assert.Equal("SM-G965F", snap.Model);
+        Assert.Equal(DeviceMode.Recovery, snap.Mode);
+    }
+
     private static DeviceSnapshot Snap(string? bootloader = "G965FXXUHFVG4", string model = "SM-G965F",
         DeviceMode mode = DeviceMode.Android, bool? locked = true, bool? oem = true) =>
         new("S", mode, model, "star2lte", "exynos9810", bootloader, "10", null, oem, locked, "green", false);

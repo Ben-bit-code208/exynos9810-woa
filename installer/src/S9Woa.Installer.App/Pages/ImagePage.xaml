@@ -23,7 +23,7 @@
                         <Button Grid.Column="1" Content="Browse…" Click="OnBrowse" />
                     </Grid>
                     <TextBlock x:Name="MediaHint" Style="{StaticResource CaptionSecondaryStyle}"
-                               Text="Validated with Windows 11 IoT Enterprise 23H2 (build 22631) ARM64. Newer builds haven't been tested on this phone." />
+                               Text="The phone's firmware starts one exact Windows build; the installer checks your media against it." />
                 </StackPanel>
             </Border>
 

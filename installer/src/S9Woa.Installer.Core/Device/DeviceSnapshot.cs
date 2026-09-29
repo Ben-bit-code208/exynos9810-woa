@@ -78,7 +78,8 @@ public sealed record DeviceSnapshot(
         return new DeviceSnapshot(
             device.Serial,
             mode,
-            P("ro.product.model", "ro.product.system.model") ?? device.Model?.Replace('_', '-'),
+            // S-Boot sets ro.boot.em.model; custom recoveries often report a marketing name in ro.product.model.
+            P("ro.boot.em.model", "ro.product.model", "ro.product.system.model") ?? device.Model?.Replace('_', '-'),
             P("ro.product.device", "ro.product.vendor.device") ?? device.Product,
             P("ro.boot.hardware", "ro.hardware"),
             P("ro.boot.bootloader", "ro.bootloader"),
