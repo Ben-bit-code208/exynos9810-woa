@@ -97,19 +97,30 @@ public static class DeviceEligibility
                 "Enable Developer options, then turn on Settings > Developer options > OEM unlocking. "
                 + "If the switch is missing, connect to the internet, check for software updates, and wait (the phone may need to be online for several days)."));
         }
+        else if (d.Mode == DeviceMode.Download)
+        {
+            results.Add(new("unlock", "Bootloader", CheckSeverity.Info, "Not reported in Download mode.",
+                "The phone refuses TWRP if the bootloader is still locked."));
+        }
         else
         {
             results.Add(new("unlock", "Bootloader", CheckSeverity.Warning, "Lock state not reported by recovery."));
         }
 
-        results.Add(d.WarrantyTripped == true
-            ? new("knox", "Knox warranty bit", CheckSeverity.Info, "Already tripped (0x1).")
-            : new("knox", "Knox warranty bit", CheckSeverity.Warning, "Intact. Installing will permanently trip it.",
-                "Samsung Pay, Secure Folder and Knox-based features stop working permanently."));
+        results.Add(d.WarrantyTripped switch
+        {
+            true => new("knox", "Knox warranty bit", CheckSeverity.Info, "Already tripped (0x1)."),
+            null when d.Mode == DeviceMode.Download => new("knox", "Knox warranty bit", CheckSeverity.Info, "Not reported in Download mode."),
+            _ => new("knox", "Knox warranty bit", CheckSeverity.Warning, "Intact. Installing will permanently trip it.",
+                "Samsung Pay, Secure Folder and Knox-based features stop working permanently."),
+        });
 
-        results.Add(d.Mode == DeviceMode.Recovery
-            ? new("mode", "Current mode", CheckSeverity.Info, $"Recovery{(d.RecoveryVersion is null ? "" : $" (TWRP {d.RecoveryVersion})")}")
-            : new("mode", "Current mode", CheckSeverity.Info, $"Android {d.AndroidVersion}"));
+        results.Add(d.Mode switch
+        {
+            DeviceMode.Recovery => new("mode", "Current mode", CheckSeverity.Info, $"Recovery{(d.RecoveryVersion is null ? "" : $" (TWRP {d.RecoveryVersion})")}"),
+            DeviceMode.Download => new("mode", "Current mode", CheckSeverity.Info, "Download mode (the phone identified earlier)"),
+            _ => new("mode", "Current mode", CheckSeverity.Info, $"Android {d.AndroidVersion}"),
+        });
 
         return results;
     }

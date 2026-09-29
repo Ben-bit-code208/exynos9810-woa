@@ -43,6 +43,9 @@ public enum DeviceMode
     Unauthorized,
     Offline,
     Unknown,
+
+    /// <summary>Samsung Download (Odin) mode: no adb; the phone is the one identified earlier.</summary>
+    Download,
 }
 
 public sealed record DeviceSnapshot(
@@ -59,6 +62,24 @@ public sealed record DeviceSnapshot(
     string? VerifiedBootState,
     bool? WarrantyTripped)
 {
+    /// <summary>
+    /// A phone in Download mode, which reports nothing over USB but its presence. It stands for
+    /// the phone this installation identified before (its serial and bootloader were saved);
+    /// null when nothing was identified yet, or the saved bootloader is not a supported model's.
+    /// </summary>
+    public static DeviceSnapshot? InDownloadMode(string? knownSerial, string? knownBootloader, IReadOnlyList<SupportedTarget>? targets = null)
+    {
+        if (knownSerial is null)
+        {
+            return null;
+        }
+        var target = (targets ?? SupportedTarget.All).FirstOrDefault(t => SamsungBuild.TryParse(knownBootloader, t.ModelCode) is not null);
+        return target is null
+            ? null
+            : new DeviceSnapshot(knownSerial, DeviceMode.Download, target.Model, target.Codename, target.HardwareToken,
+                knownBootloader, null, null, null, null, null, null);
+    }
+
     public static DeviceSnapshot FromAdb(AdbDevice device, IReadOnlyDictionary<string, string>? props)
     {
         string? P(params string[] keys) => props is null ? null

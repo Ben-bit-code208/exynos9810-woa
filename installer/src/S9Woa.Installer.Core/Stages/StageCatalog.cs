@@ -80,6 +80,9 @@ public sealed class InstallState
     /// <summary>Read back and hash every block written to the phone (null = default, on).</summary>
     public bool? VerifyWrites { get; set; }
 
+    /// <summary>TWRP is already on the phone: the TWRP step only boots it instead of flashing.</summary>
+    public bool SkipTwrpFlash { get; set; }
+
     /// <summary>UEFI image (file name in the firmware catalog) matching the built Windows image.</summary>
     public string? FirmwareFile { get; set; }
     public Dictionary<string, StageRecord> Stages { get; set; } = [];

@@ -26,6 +26,7 @@ public sealed partial class InstallPage : Page, IWizardStep
         Timeline.ItemsSource = _items;
         ExperimentalToggle.IsOn = AppServices.ExperimentalEnabled;
         VerifyToggle.IsOn = AppServices.VerifyWrites;
+        SkipTwrpToggle.IsOn = AppServices.SkipTwrpFlash;
         var dev = AppServices.CurrentDevice;
         ReviewPhone.Text = dev is null ? "Not connected" : $"{dev.Model} · {dev.Bootloader}";
         ReviewMedia.Text = AppServices.MediaPath is null ? "Not selected" : Path.GetFileName(AppServices.MediaPath);
@@ -112,6 +113,7 @@ public sealed partial class InstallPage : Page, IWizardStep
         CancelButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         ExperimentalToggle.IsEnabled = !running;
         VerifyToggle.IsEnabled = !running;
+        SkipTwrpToggle.IsEnabled = !running;
         HeadlineText.Text = running ? "Installing Windows" : HeadlineText.Text;
         UpdateNow();
         StateChanged?.Invoke(this, EventArgs.Empty);
@@ -211,6 +213,16 @@ public sealed partial class InstallPage : Page, IWizardStep
                     return (false, "adb.exe not found.");
                 }
                 var devices = await AppServices.Adb.ListDevicesAsync(ct);
+                if (devices.Count == 0 && await AppServices.FindDownloadModeAsync(ct) is (true, var inDownload))
+                {
+                    if (inDownload is null)
+                    {
+                        return (false, "The phone is in Download mode but hasn't been identified yet. Start it in Android with USB debugging "
+                            + "(or in TWRP) once, then press Resume.");
+                    }
+                    AppServices.CurrentDevice = inDownload;
+                    return (true, $"{inDownload.Model} {inDownload.Bootloader} (in Download mode, identified earlier)");
+                }
                 if (devices.Count != 1)
                 {
                     return (false, devices.Count == 0 ? "No phone connected." : "Connect only one phone.");
@@ -233,9 +245,13 @@ public sealed partial class InstallPage : Page, IWizardStep
                 {
                     return refreshed;
                 }
-                return AppServices.CurrentDevice?.FlashLocked == false
-                    ? (true, "Bootloader unlocked.")
-                    : (false, "Unlock the bootloader (see the Phone page), finish Android setup, re-enable USB debugging, then press Resume.");
+                return AppServices.CurrentDevice switch
+                {
+                    { FlashLocked: false } => (true, "Bootloader unlocked."),
+                    // Download mode can't report it; a locked bootloader refuses the TWRP flash itself.
+                    { Mode: DeviceMode.Download } => (true, "Not reported in Download mode; the TWRP flash checks it."),
+                    _ => (false, "Unlock the bootloader (see the Phone page), finish Android setup, re-enable USB debugging, then press Resume."),
+                };
 
             case "twrp":
                 return await RunTwrpAsync(log, ct);
@@ -271,6 +287,10 @@ public sealed partial class InstallPage : Page, IWizardStep
 
     private static async Task<(bool, string)> RunTwrpAsync(IProgress<string> log, CancellationToken ct)
     {
+        if (AppServices.SkipTwrpFlash)
+        {
+            return await StartExistingTwrpAsync(log, ct);
+        }
         if (AppServices.TwrpImagePath is null)
         {
             return (false, "TWRP is not set up. Add it on the Set up page, then press Resume.");
@@ -338,6 +358,48 @@ public sealed partial class InstallPage : Page, IWizardStep
         }
     }
 
+    /// <summary>
+    /// "TWRP is already on the phone": nothing is flashed. A phone in Android is restarted into
+    /// recovery; otherwise the user starts TWRP with the key combination.
+    /// </summary>
+    private static async Task<(bool, string)> StartExistingTwrpAsync(IProgress<string> log, CancellationToken ct)
+    {
+        if (AppServices.Device is null)
+        {
+            return (false, "adb.exe not found.");
+        }
+        var dev = await RefreshDeviceAsync(ct);
+        var serial = dev?.Serial ?? AppServices.State.DeviceSerial;
+        if (serial is null)
+        {
+            return (false, "Connect the phone (Android with USB debugging, or TWRP) so the installer can identify it, then press Resume.");
+        }
+        log.Report("Skipping the TWRP flash: TWRP is already on the phone.");
+        if (dev is { Mode: DeviceMode.Android })
+        {
+            log.Report("Restarting the phone into TWRP...");
+            await AppServices.Device.RebootAsync(serial, RebootTarget.Recovery, ct);
+        }
+        else if (dev is not { Mode: DeviceMode.Recovery })
+        {
+            log.Report("Start TWRP: hold Volume Down + Power until the screen goes off, then immediately hold Volume Up + Bixby + Power.");
+        }
+        try
+        {
+            AppServices.CurrentDevice = dev is { Mode: DeviceMode.Recovery }
+                ? dev
+                : await AppServices.Device.WaitForModeAsync(serial, DeviceMode.Recovery, TimeSpan.FromMinutes(5), log, ct);
+        }
+        catch (TimeoutException)
+        {
+            return (false, "TWRP did not come up. Start it with Volume Up + Bixby + Power, then press Resume. "
+                + "If the phone shows Samsung's own recovery, turn off \"TWRP is already on the phone\" so the installer flashes it.");
+        }
+        return await SettleTwrpAsync(log, ct) && await ClearBootRequestAsync(log, ct)
+            ? (true, "TWRP is running (not flashed; it was already on the phone).")
+            : (false, "TWRP started but its connection is not settled yet. Wait a minute, then press Resume.");
+    }
+
     /// <summary>Clears the MISC boot-recovery request used to start TWRP, so later restarts are normal.</summary>
     private static async Task<bool> ClearBootRequestAsync(IProgress<string> log, CancellationToken ct)
     {
@@ -359,6 +421,10 @@ public sealed partial class InstallPage : Page, IWizardStep
             return AppServices.CurrentDevice;
         }
         var devices = await AppServices.Adb.ListDevicesAsync(ct);
+        if (devices.Count == 0 && await AppServices.FindDownloadModeAsync(ct) is (true, var inDownload))
+        {
+            return AppServices.CurrentDevice = inDownload;
+        }
         if (devices.Count != 1)
         {
             return AppServices.CurrentDevice = null;
@@ -734,6 +800,15 @@ public sealed partial class InstallPage : Page, IWizardStep
 
     private void OnExperimentalToggled(object sender, RoutedEventArgs e) =>
         AppServices.ExperimentalEnabled = ExperimentalToggle.IsOn;
+
+    private void OnSkipTwrpToggled(object sender, RoutedEventArgs e)
+    {
+        if (AppServices.SkipTwrpFlash != SkipTwrpToggle.IsOn)
+        {
+            AppServices.SkipTwrpFlash = SkipTwrpToggle.IsOn;
+            AppServices.SaveState();
+        }
+    }
 
     private void OnVerifyToggled(object sender, RoutedEventArgs e)
     {

@@ -67,6 +67,22 @@ internal static class AppServices
 
     public static TwrpClient? Twrp(string serial) => AdbPath is null ? null : new TwrpClient(AdbPath, serial, Runner);
 
+    /// <summary>
+    /// Whether a phone is in Download mode, and if so the phone this installation identified before
+    /// (null when it hasn't identified one yet). Only called when adb sees no phone.
+    /// </summary>
+    public static async Task<(bool Present, DeviceSnapshot? Phone)> FindDownloadModeAsync(CancellationToken ct = default)
+    {
+        if (await TwrpFlasher.ResolveAsync(ct) is null)
+        {
+            return (false, null);
+        }
+        return (true, DeviceSnapshot.InDownloadMode(State.DeviceSerial, State.DeviceBootloader));
+    }
+
+    /// <summary>Flash TWRP (off: it is already on the phone, so the TWRP step only starts it).</summary>
+    public static bool SkipTwrpFlash { get; set; } = State.SkipTwrpFlash;
+
     private static DeviceSnapshot? _currentDevice;
 
     /// <summary>The phone last identified on the phone page; raises <see cref="CurrentDeviceChanged"/>.</summary>
@@ -121,6 +137,7 @@ internal static class AppServices
         State.SlimProfile = Profile.ToString();
         State.AccountName = Unattend.Username;
         State.VerifyWrites = VerifyWrites;
+        State.SkipTwrpFlash = SkipTwrpFlash;
         State.DeviceSerial = CurrentDevice?.Serial ?? State.DeviceSerial;
         State.DeviceBootloader = CurrentDevice?.Bootloader ?? State.DeviceBootloader;
         State.Save(DataDirectory);

@@ -108,6 +108,19 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="TWRP is already on the phone" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Style="{StaticResource CaptionSecondaryStyle}"
+                                               Text="Skip flashing it; the installer only starts it." />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="SkipTwrpToggle" Grid.Column="1" Toggled="OnSkipTwrpToggled" OnContent="" OffContent=""
+                                              MinWidth="0" AutomationProperties.Name="TWRP is already on the phone" />
+                            </Grid>
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="Run experimental steps" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                     <TextBlock Style="{StaticResource CaptionSecondaryStyle}"
                                                Text="Automated, not yet validated end to end. Only with your phone's backup." />

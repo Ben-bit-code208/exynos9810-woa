@@ -37,6 +37,21 @@ public class DeviceTests
     }
 
     [Fact]
+    public void DownloadModeContinuesAsThePhoneIdentifiedEarlier()
+    {
+        Assert.Null(DeviceSnapshot.InDownloadMode(null, "G965FXXUHFVG4"));          // never identified
+        Assert.Null(DeviceSnapshot.InDownloadMode("aa11bb22cc33dd44", "G960FXXU9FVB1")); // not a supported model
+        var phone = DeviceSnapshot.InDownloadMode("aa11bb22cc33dd44", "G965FXXUHFVG4")!;
+        Assert.Equal(DeviceMode.Download, phone.Mode);
+        Assert.Equal("SM-G965F", phone.Model);
+
+        var checks = DeviceEligibility.Evaluate(phone);
+        Assert.False(checks.HasBlockers());
+        Assert.DoesNotContain(checks, c => c.Severity == CheckSeverity.Warning);
+        Assert.Equal(CheckSeverity.Info, checks.Single(c => c.Id == "unlock").Severity);
+    }
+
+    [Fact]
     public void PrefersBootloaderModelInRecovery()
     {
         var props = AdbClient.ParseGetprop("[ro.product.model]: [Galaxy S9+]\n[ro.boot.em.model]: [SM-G965F]\n[ro.twrp.version]: [3.7.0_9-0]\n");

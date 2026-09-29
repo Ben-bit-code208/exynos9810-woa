@@ -67,8 +67,14 @@ public sealed partial class PhonePage : Page, IWizardStep
             var devices = await AppServices.Adb.ListDevicesAsync();
             if (devices.Count == 0)
             {
+                var (inDownload, phone) = await AppServices.FindDownloadModeAsync();
+                if (inDownload)
+                {
+                    ShowDownloadMode(phone);
+                    return;
+                }
                 AppServices.CurrentDevice = null;
-                ShowSearching("Looking for your phone…", "Connect it with USB debugging turned on.");
+                ShowSearching("Looking for your phone…", "Connect it with USB debugging turned on, or in Download mode.");
                 return;
             }
             if (devices.Count > 1)
@@ -135,6 +141,57 @@ public sealed partial class PhonePage : Page, IWizardStep
         finally
         {
             _polling = false;
+        }
+    }
+
+    /// <summary>
+    /// Download mode reports no model or state, so it continues as the phone identified earlier;
+    /// a phone never seen in Android or TWRP has to be identified there once.
+    /// </summary>
+    private void ShowDownloadMode(DeviceSnapshot? phone)
+    {
+        SearchRing.IsActive = false;
+        RebootMenu.Visibility = Visibility.Collapsed;
+        DeviceIcon.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+        if (phone is null)
+        {
+            AppServices.CurrentDevice = null;
+            DeviceTitle.Text = "Phone in Download mode";
+            DeviceDetail.Text = "Not identified yet";
+            ChecksCard.Visibility = Visibility.Collapsed;
+            Show(InfoBarSeverity.Warning, "Identify the phone once",
+                "Download mode doesn't report the model. Start the phone in Android with USB debugging (or in TWRP) once so the "
+                + "installer can check it; after that you can continue from Download mode.");
+            SetReady(false);
+            return;
+        }
+        var results = DeviceEligibility.Evaluate(phone);
+        AppServices.CurrentDevice = phone;
+        var key = $"{phone.Serial}|{phone.Mode}";
+        if (key != _lastKey)
+        {
+            _lastKey = key;
+            AppServices.Log($"device Download mode, continuing as {phone.Model} bl={phone.Bootloader} (identified earlier)");
+        }
+        DeviceTitle.Text = $"Galaxy S9+ · {phone.Model}";
+        DeviceDetail.Text = $"In Download mode · firmware {phone.Bootloader}";
+        Results.ItemsSource = results.Select(r => new CheckItem(r)).ToList();
+        ChecksCard.Visibility = Visibility.Visible;
+        var blocked = results.HasBlockers();
+        if (blocked)
+        {
+            Show(InfoBarSeverity.Error, "This phone can't be used yet", "Resolve the items marked in red below.");
+        }
+        else
+        {
+            Show(InfoBarSeverity.Success, "Ready from Download mode",
+                "The installer continues with the phone it identified earlier and flashes TWRP from here.");
+        }
+        SetReady(!blocked);
+        if (!blocked)
+        {
+            AppServices.State.Set("identify", StageStatus.Done);
+            AppServices.SaveState();
         }
     }
 
