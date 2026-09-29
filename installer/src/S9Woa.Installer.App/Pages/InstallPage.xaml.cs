@@ -96,7 +96,12 @@ public sealed partial class InstallPage : Page, IWizardStep
                 if (avail == StageAvailability.Experimental && !AppServices.ExperimentalEnabled)
                 {
                     Report(InfoBarSeverity.Informational, item.Title,
-                        "This step is experimental. Turn on \"Run experimental steps\" to continue on your own device.");
+                        "This step is experimental: automated, but not yet validated end to end. Continue only on your own Galaxy S9+ with its backup.",
+                        ("Run experimental steps", () =>
+                        {
+                            ExperimentalToggle.IsOn = true;
+                            _ = RunAllAsync();
+                        }));
                     return;
                 }
                 SetStatus(item, StageStatus.Running);
@@ -479,11 +484,22 @@ public sealed partial class InstallPage : Page, IWizardStep
         return (true, "Restarting into Windows. Follow the setup on the phone's screen.");
     }
 
-    private void Report(InfoBarSeverity severity, string title, string message)
+    private void Report(InfoBarSeverity severity, string title, string message, (string Label, Action Run)? action = null)
     {
         ResultBar.Severity = severity;
         ResultBar.Title = title;
         ResultBar.Message = message;
+        ResultBar.ActionButton = null;
+        if (action is { } a)
+        {
+            var button = new Button { Content = a.Label };
+            button.Click += (_, _) =>
+            {
+                ResultBar.IsOpen = false;
+                a.Run();
+            };
+            ResultBar.ActionButton = button;
+        }
         ResultBar.IsOpen = true;
     }
 
