@@ -19,7 +19,7 @@ public sealed partial class ToolRow(ToolDefinition definition) : INotifyProperty
     public string Id => definition.Id;
     public string Name => definition.Name;
     public string Purpose => definition.Purpose;
-    public string Badge => definition.Required ? "" : "Later";
+    public string Badge => definition.Required ? "" : "Optional";
     public Visibility BadgeVisibility => definition.Required ? Visibility.Collapsed : Visibility.Visible;
 
     public ToolStatus Status

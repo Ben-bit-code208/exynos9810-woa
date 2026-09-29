@@ -34,7 +34,7 @@ verifies the result.
 | Get Windows media | ✅ Ready |
 | Build the Windows image | 🧪 Experimental (VHDX: apply + drivers + slim + OOBE unattend + bcdboot, exported to a raw image) |
 | Unlock the bootloader | 🧑 Guided (you do it; the installer verifies) |
-| Install TWRP | 🧪 Experimental (flashes RECOVERY by name via Heimdall) |
+| Install TWRP | 🧪 Experimental (flashes RECOVERY by name over Samsung's Download-mode protocol, through the Samsung USB driver — no Zadig) |
 | Back up EFS / modem / partition table | 🧪 Experimental (verified backup to your PC) |
 | Prepare partitions | 🧪 Experimental (verifies the layout by name) |
 | Copy Windows to the phone | 🧪 Experimental (raw image → USERDATA + boot files → EFI, verified) |
@@ -67,13 +67,13 @@ locked until everything below is ready, and the choices are remembered in
 | Item | How Setup provides it |
 |------|------------------------|
 | Android platform tools (adb) | winget `Google.PlatformTools` |
-| Heimdall | winget `BenjaminDobell.Heimdall` |
-| Zadig | winget `akeo.ie.Zadig` |
+| Heimdall (optional) | winget `BenjaminDobell.Heimdall`; only a fallback, used if the Download-mode interface has been switched to WinUSB |
+| Zadig (optional) | winget `akeo.ie.Zadig`; only for the Heimdall fallback |
 | Samsung USB driver | You download Samsung's installer; Setup runs it only if it is validly signed by Samsung Electronics |
 | TWRP for star2lte | Setup opens the official TWRP page; you choose the downloaded `twrp-*-star2lte.img` (checked for the model name, the boot-image header and the RECOVERY size) |
 | UEFI image | Latest project release (`uefi.img`), or your local build folder |
 | Phone drivers | Latest project release (`drivers.zip`), or your local build folder |
-| Download-mode USB driver (WinUSB) | Done later, while installing TWRP: Setup opens Zadig to bind the phone's Download-mode interface |
+| Download-mode USB driver for Heimdall (optional) | Not needed: the installer flashes TWRP through the Samsung USB driver. Only for the Heimdall fallback, via Zadig |
 
 **Set up automatically** installs everything that needs no decision from you.
 Release downloads are kept only if they match the release's `SHA256SUMS`; a

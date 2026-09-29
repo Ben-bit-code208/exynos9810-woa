@@ -52,7 +52,7 @@ Device tools and About open as side pages outside the flow. Debug builds accept
 page renders one card per entry. `ToolsetManager` detects each item, acquires it,
 and persists choices to `toolset.json` (release repository, local build folder,
 program overrides). The install pages are locked until `ToolsetManager.IsComplete`
-holds: every required item is `Ready`, and optional ones may be `Deferred`.
+holds: every required item is `Ready`; optional ones (the Heimdall fallback) never block.
 
 - **Programs** (adb, Heimdall, Zadig) — `ToolLocator` checks, in order: a
   user override, the app's `tools\` folder, winget portable installs (per-user and
@@ -71,8 +71,8 @@ holds: every required item is `Ready`, and optional ones may be `Deferred`.
   `.inf` next to a `.sys`). `tools/release/make-payload.ps1` produces the matching
   release assets.
 - **Download-mode driver** — `DownloadModeDriver` reads the USB enumeration
-  key for `VID_04E8&PID_685D`; it stays `Deferred` until Zadig binds WinUSB, which
-  can only happen with the phone in Download mode during the TWRP stage.
+  key for `VID_04E8&PID_685D`. It matters only for the optional Heimdall
+  fallback, which needs Zadig to bind WinUSB; the built-in flasher does not.
 
 Registry, signature checks, winget and HTTP are behind interfaces, so the tests
 cover these paths without touching the PC or the network.
@@ -107,9 +107,18 @@ seams so it is unit-tested without hardware:
 - `PartitionMap` — the validated star2lte partition names.
 - `BackupService` — verified identity backup (efs and friends) to the PC, with a
   device/PC sha256 cross-check and a JSON manifest. Refuses if `efs` is missing.
-- `TwrpFlasher` — `ITwrpFlasher` plus `HeimdallTwrpFlasher` (drives the
-  open-source Heimdall, which flashes RECOVERY by name) and `TwrpFlashService`
-  (preference order: native Odin when ported and validated, then Heimdall).
+- `TwrpFlasher` — `ITwrpFlasher`, `TwrpFlashService` (uses the first available
+  flasher) and `HeimdallTwrpFlasher` (fallback; needs Zadig's WinUSB binding).
+- `Odin/` — the built-in flasher. `OdinSession` speaks Samsung's Download-mode
+  protocol (ODIN/LOKE handshake, begin session with protocol-version probe,
+  PIT dump in 500-byte parts, file sequences of 128 KiB or 1 MiB parts, end
+  session without reboot), implemented from the protocol as documented by the
+  open-source Heimdall and Thor projects. `SerialOdinTransport` carries it over
+  the COM port the Samsung USB driver creates for Download mode, so no driver is
+  replaced; `DownloadModePort` finds that port (a present `VID_04E8&PID_685D`
+  instance). `OdinTwrpFlasher` looks up RECOVERY in the phone's PIT by name,
+  flashes TWRP and leaves the phone in Download mode for the TWRP key combo.
+  `Pit` parses the partition table. A simulated bootloader covers it in tests.
 - `TransferService` — writes prepared images through TWRP with verification: the
   raw Windows volume to USERDATA in 1-MiB-aligned windows (each read back and
   hashed), and whole small images (UEFI) to BOOT. It refuses a destination
@@ -137,10 +146,20 @@ The validated device targets are in `Deploy/PartitionMap`: Windows to
 `USERDATA`, UEFI to `BOOT`, TWRP to `RECOVERY`, and boot files to the FAT EFI
 system partition.
 
-A self-contained C# Odin/Thor implementation is intended as the primary flasher;
-it must be ported from the authoritative Heimdall protocol and validated on the
-device before it is enabled — a guessed download-mode protocol can brick a phone,
-so it is not hand-written from memory.
+## Image profiles
+
+`Image/SlimPlan` turns a profile into ordered operations that `ImageServicer`
+applies offline (all DISM work runs with the image's registry hives unloaded):
+
+- **Stock** — drivers only.
+- **Lite** — removes consumer inbox apps and applies ads/telemetry defaults;
+  Windows Update keeps working.
+- **Core** — follows tiny11Coremaker.ps1: Lite plus CBS package removal
+  (Defender, IE, Media Player, language features, ...), Edge/WebView2/OneDrive and
+  WinRE deletion, a component store (WinSxS) cut down to the servicing stack and
+  runtime assemblies, tiny11's registry set (Windows Update and Defender off,
+  Copilot/Teams/Outlook blocked) and a final `/ResetBase`. All of it works from an
+  x64 PC on an ARM64 image.
 
 ## Release pipeline (maintainers only)
 

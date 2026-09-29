@@ -228,28 +228,35 @@ public sealed partial class InstallPage : Page, IWizardStep
             return (false, "TWRP is not set up. Add it on the Set up page, then press Resume.");
         }
         var resolved = await AppServices.TwrpFlasher.ResolveAsync(ct);
-        if (resolved is null && AppServices.HeimdallPath is not null && AppServices.Device is not null
+        if (resolved is null && AppServices.Device is not null
             && await RefreshDeviceAsync(ct) is { Mode: DeviceMode.Android or DeviceMode.Recovery } phone)
         {
             log.Report("Restarting the phone into Download mode...");
             await AppServices.Device.RebootAsync(phone.Serial, RebootTarget.Download, ct);
-            for (var i = 0; i < 30 && resolved is null; i++)
+            for (var i = 0; i < 60 && resolved is null; i++)
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), ct);
                 resolved = await AppServices.TwrpFlasher.ResolveAsync(ct);
+                if (i == 20 && resolved is null)
+                {
+                    log.Report("Still waiting for Download mode. If the phone shows a warning screen, press Volume Up to continue.");
+                }
             }
         }
         if (resolved is null)
         {
-            var binding = Core.Toolset.DownloadModeDriver.Detect(new Core.Toolset.LocalMachineRegistry());
-            return (false, AppServices.HeimdallPath is null
-                ? "Heimdall is not set up. Install it on the Set up page, then press Resume."
-                : "Heimdall can't see the phone. Put it in Download mode (power off, hold Volume Down + Bixby + Power, then press Volume Up). "
-                  + (binding.State == Core.Toolset.ToolState.Ready
-                      ? "Then press Resume."
-                      : "The first time, open Device tools or Set up > Download-mode USB driver > Open Zadig, select the Samsung device (04E8 685D), choose WinUSB and click Replace Driver. Then press Resume."));
+            return (false, "The phone isn't in Download mode. Power it off, hold Volume Down + Bixby + Power, then press Volume Up "
+                + "at the warning screen. Then press Resume.");
         }
-        await AppServices.TwrpFlasher.FlashRecoveryAsync(AppServices.TwrpImagePath, log, ct);
+        try
+        {
+            await AppServices.TwrpFlasher.FlashRecoveryAsync(AppServices.TwrpImagePath, log, ct);
+        }
+        catch (Exception e) when (e is IOException or TimeoutException)
+        {
+            return (false, $"Flashing TWRP failed: {e.Message} Restart the phone into Download mode (hold Volume Down + Power, "
+                + "then Volume Down + Bixby + Power) and press Resume.");
+        }
 
         if (AppServices.Device is null || AppServices.CurrentDevice is null)
         {

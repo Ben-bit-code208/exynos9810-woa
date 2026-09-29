@@ -61,7 +61,7 @@ public sealed partial class SetupPage : Page, IWizardStep
         var pending = Tools.All.Where(t => t.Required && statuses[t.Id].State != ToolState.Ready).Select(t => t.Name).ToList();
         SummaryTitle.Text = complete ? "Everything is ready" : pending.Count == 1 ? "1 item still needed" : $"{pending.Count} items still needed";
         SummaryText.Text = complete
-            ? "All tools and files are in place. The Download-mode driver step happens later, while installing TWRP."
+            ? "All tools and files are in place."
             : "Set up automatically installs the programs and downloads the verified boot files. Still needed: " + string.Join(", ", pending) + ".";
         AutoButton.IsEnabled = !_running && !complete;
         BuildFolderText.Text = AppServices.Toolset.Config.BuildFolder is { } f

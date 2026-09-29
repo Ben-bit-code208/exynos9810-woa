@@ -61,7 +61,7 @@
             </Grid>
             <TextBlock x:Name="ProfileSummary" TextWrapping="Wrap" Style="{StaticResource CaptionSecondaryStyle}" />
             <InfoBar x:Name="CoreWarning" IsClosable="False" Severity="Warning" Title="Core removes safety nets"
-                     Message="No Windows Update, no Defender, no recovery environment and no way to add features or languages later. Choose it only for a throwaway or offline device." />
+                     Message="Based on tiny11 Core. No Windows Update, Defender, Edge, recovery environment or way to add features and languages later. Choose it only for a throwaway or offline device." />
 
             <TextBlock Text="Your account" Style="{StaticResource SectionHeaderStyle}" />
             <Border Style="{StaticResource CardStyle}">

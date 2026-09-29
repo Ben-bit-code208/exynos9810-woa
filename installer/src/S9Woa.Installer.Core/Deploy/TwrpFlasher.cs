@@ -70,7 +70,10 @@ public sealed class HeimdallTwrpFlasher : ITwrpFlasher
     }
 }
 
-/// <summary>Chooses a working TWRP flasher, preferring the native Odin path with a Heimdall fallback.</summary>
+/// <summary>
+/// Chooses a working TWRP flasher: the built-in Download-mode flasher (Samsung USB driver COM
+/// port), or Heimdall when the Download-mode interface has been switched to WinUSB.
+/// </summary>
 public sealed class TwrpFlashService
 {
     private readonly IReadOnlyList<ITwrpFlasher> _flashers;
@@ -93,8 +96,7 @@ public sealed class TwrpFlashService
     {
         var flasher = await ResolveAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException(
-                "No usable TWRP flasher. Put the phone in Download mode (power off, then hold Volume Down + Bixby + Power, "
-                + "then Volume Up), and install Heimdall (with the Zadig/libusbK driver) if the native path is unavailable.");
+                "No phone in Download mode. Power it off, then hold Volume Down + Bixby + Power and press Volume Up at the warning.");
         log?.Report($"Using {flasher.Name} to flash TWRP.");
         await flasher.FlashRecoveryAsync(twrpImage, log, ct).ConfigureAwait(false);
     }

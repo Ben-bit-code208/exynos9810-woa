@@ -25,9 +25,15 @@ Samsung sec_ts / s6sy761 touchscreen driver — Andi Shyti and contributors
 TWRP (Team Win Recovery Project)
   The recovery used to stage and write the Windows image on the device.
 
-tiny11builder
-  The optional image-slimming profiles are inspired by the tiny11builder
-  approach to trimming a Windows image.
+Heimdall (https://github.com/Benjamin-Dobell/Heimdall, MIT) and
+Thor (https://github.com/Samsung-Loki/Thor)
+  The built-in Download-mode flasher implements Samsung's protocol as these
+  projects document it. No code is copied from them.
+
+tiny11builder (https://github.com/ntdevlabs/tiny11builder)
+  The Lite profile follows the tiny11builder approach to trimming a Windows
+  image; the Core profile follows its tiny11Coremaker.ps1 (package, Edge,
+  OneDrive and WinRE removal, component store trim, registry defaults).
 
 Microsoft
   Windows, the Windows App SDK and WinUI 3. Windows media is provided by the

@@ -50,7 +50,7 @@ internal static class AppServices
     public static string? HeimdallPath { get; private set; }
     public static string? ZadigPath { get; private set; }
 
-    /// <summary>TWRP flasher preference order: native (when ported and validated) then Heimdall.</summary>
+    /// <summary>TWRP flasher preference order: the built-in Download-mode flasher, then Heimdall if installed.</summary>
     public static TwrpFlashService TwrpFlasher { get; private set; } = new([]);
 
     /// <summary>Re-resolves program paths after the Setup page installs or changes a tool.</summary>
@@ -61,7 +61,8 @@ internal static class AppServices
         Device = Adb is null ? null : new DeviceActions(Adb, Runner);
         HeimdallPath = Toolset.ResolvePath(Tools.Heimdall);
         ZadigPath = Toolset.ResolvePath(Tools.Zadig);
-        TwrpFlasher = new TwrpFlashService(HeimdallPath is null ? [] : [new HeimdallTwrpFlasher(HeimdallPath, Runner)]);
+        ITwrpFlasher native = new Core.Deploy.Odin.OdinTwrpFlasher(new LocalMachineRegistry());
+        TwrpFlasher = new TwrpFlashService(HeimdallPath is null ? [native] : [native, new HeimdallTwrpFlasher(HeimdallPath, Runner)]);
     }
 
     public static TwrpClient? Twrp(string serial) => AdbPath is null ? null : new TwrpClient(AdbPath, serial, Runner);

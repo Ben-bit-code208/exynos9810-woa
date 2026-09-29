@@ -85,10 +85,9 @@ public sealed class ToolsetManager
     public IReadOnlyDictionary<string, ToolStatus> DetectAll() =>
         Tools.All.ToDictionary(t => t.Id, t => Detect(t.Id));
 
-    /// <summary>Every required tool is ready; optional ones may be deferred to later in the install.</summary>
+    /// <summary>Every required tool is ready; optional ones (the Heimdall fallback) never block.</summary>
     public static bool IsComplete(IReadOnlyDictionary<string, ToolStatus> statuses) =>
-        Tools.All.All(t => statuses.TryGetValue(t.Id, out var s)
-            && (s.State == ToolState.Ready || (!t.Required && s.State == ToolState.Deferred)));
+        Tools.All.All(t => !t.Required || (statuses.TryGetValue(t.Id, out var s) && s.State == ToolState.Ready));
 
     public string? ResolvePath(string id) => Detect(id) is { State: ToolState.Ready, Path: { } p } ? p : null;
 
