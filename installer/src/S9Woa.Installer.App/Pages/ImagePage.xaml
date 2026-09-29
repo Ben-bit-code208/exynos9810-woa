@@ -19,9 +19,13 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="MediaBox" PlaceholderText="Windows 11 ARM64 .wim, .esd or .iso" TextChanged="OnMediaTextChanged" />
+                        <TextBox x:Name="MediaBox" PlaceholderText="Windows 11 ARM64 .iso, .wim or .esd" TextChanged="OnMediaTextChanged" />
                         <Button Grid.Column="1" Content="Browse…" Click="OnBrowse" />
                     </Grid>
+                    <StackPanel x:Name="ExtractPanel" Spacing="6" Visibility="Collapsed">
+                        <TextBlock x:Name="ExtractText" Style="{StaticResource CaptionSecondaryStyle}" />
+                        <ProgressBar x:Name="ExtractProgress" Maximum="1" />
+                    </StackPanel>
                     <TextBlock x:Name="MediaHint" Style="{StaticResource CaptionSecondaryStyle}"
                                Text="The phone's firmware starts one exact Windows build; the installer checks your media against it." />
                 </StackPanel>

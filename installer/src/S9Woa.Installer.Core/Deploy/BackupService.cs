@@ -49,16 +49,14 @@ public sealed class BackupService
         Directory.CreateDirectory(hostBackupDir);
 
         var entries = new List<BackupEntry>();
-        foreach (var wanted in PartitionMap.IdentityBackup)
+        var present = PartitionMap.IdentityBackup.Where(partitions.ContainsKey).ToList();
+        foreach (var wanted in present)
         {
             ct.ThrowIfCancellationRequested();
-            if (!partitions.TryGetValue(wanted, out var node))
-            {
-                continue;
-            }
+            var node = partitions[wanted];
             // Use the phone's own spelling of the link (by-name is case-sensitive on the device).
             var name = partitions.Keys.First(k => string.Equals(k, wanted, StringComparison.OrdinalIgnoreCase));
-            log?.Report($"Backing up {name}...");
+            log?.Report($"Backing up {name} ({present.IndexOf(wanted) + 1} of {present.Count})...");
             var size = await _twrp.PartitionSizeAsync(name, ct).ConfigureAwait(false);
             var staged = $"{_twrp.SdStagingDir}/{name}.img";
             await _twrp.DdAsync($"{TwrpClient.ByName}/{name}", staged, ct).ConfigureAwait(false);

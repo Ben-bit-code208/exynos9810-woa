@@ -27,18 +27,31 @@ public sealed partial class StageItem(StageDefinition definition) : INotifyPrope
 
     public Visibility BadgeVisibility => Badge.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>What the step does, for the compact list's tooltip.</summary>
+    public string Tip => Badge.Length == 0 ? Summary : $"{Summary} ({Badge}.)";
+
     public StageStatus Status
     {
         get => _status;
         set
         {
             _status = value;
-            foreach (var n in new[] { nameof(Status), nameof(Glyph), nameof(Brush), nameof(RingActive) })
+            foreach (var n in new[] { nameof(Status), nameof(Glyph), nameof(Brush), nameof(RingActive), nameof(TitleWeight), nameof(TitleBrush) })
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
             }
         }
     }
+
+    public Windows.UI.Text.FontWeight TitleWeight =>
+        _status == StageStatus.Running ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
+
+    public Brush TitleBrush => (Brush)Application.Current.Resources[_status switch
+    {
+        StageStatus.Running => "AccentTextFillColorPrimaryBrush",
+        StageStatus.Pending => "TextFillColorSecondaryBrush",
+        _ => "TextFillColorPrimaryBrush",
+    }];
 
     public bool RingActive => _status == StageStatus.Running;
 

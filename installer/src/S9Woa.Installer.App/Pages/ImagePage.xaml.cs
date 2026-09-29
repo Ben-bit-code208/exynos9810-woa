@@ -30,6 +30,7 @@ public sealed partial class ImagePage : Page, IWizardStep
         }
         UpdateProfile();
         Validate();
+        Unloaded += (_, _) => _extract?.Cancel();
     }
 
     public event EventHandler? StateChanged;
@@ -85,15 +86,82 @@ public sealed partial class ImagePage : Page, IWizardStep
         var path = MediaBox.Text.Trim().Trim('"');
         var ok = path.Length > 0 && File.Exists(path)
             && MediaExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
-        if (ok)
+        if (ok && WindowsMedia.IsIso(path))
         {
+            // An ISO is unpacked to its install image first; the page continues once that is selected.
+            _ = ExtractAsync(path);
+            ok = false;
+        }
+        else if (ok)
+        {
+            if (!string.Equals(path, _extracted, StringComparison.OrdinalIgnoreCase))
+            {
+                _extract?.Cancel();
+                ExtractPanel.Visibility = Visibility.Collapsed;
+            }
             AppServices.MediaPath = path;
             AppServices.SaveState();
         }
+        SetOk(ok);
+    }
+
+    private string? _extracted;
+
+    private void SetOk(bool ok)
+    {
         if (ok != _ok)
         {
             _ok = ok;
             StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private CancellationTokenSource? _extract;
+
+    /// <summary>Copies install.wim/esd out of the ISO into the work folder, then selects that file.</summary>
+    private async Task ExtractAsync(string iso)
+    {
+        _extract?.Cancel();
+        var cts = _extract = new CancellationTokenSource();
+        var name = Path.GetFileName(iso);
+        ExtractPanel.Visibility = Visibility.Visible;
+        ExtractProgress.Visibility = Visibility.Visible;
+        ExtractProgress.IsIndeterminate = true;
+        ExtractText.Text = $"Opening {name}…";
+        try
+        {
+            var destination = Path.Combine(AppServices.WorkDirectory, "media", Path.GetFileNameWithoutExtension(iso));
+            var progress = new Progress<double>(f =>
+            {
+                if (cts.IsCancellationRequested)
+                {
+                    return;
+                }
+                ExtractProgress.IsIndeterminate = false;
+                ExtractProgress.Value = f;
+                ExtractText.Text = $"Extracting the Windows image from {name}: {f:P0}";
+            });
+            var image = await new WindowsMedia(AppServices.Runner).ExtractInstallImageAsync(iso, destination, progress, cts.Token);
+            if (cts.IsCancellationRequested)
+            {
+                return;
+            }
+            AppServices.Log($"Extracted {Path.GetFileName(image)} from {name} to {image}");
+            ExtractProgress.Visibility = Visibility.Collapsed;
+            ExtractText.Text = $"Extracted from {name}.";
+            _extracted = image;
+            MediaBox.Text = image;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                ExtractProgress.Visibility = Visibility.Collapsed;
+                ExtractText.Text = e.Message;
+            }
         }
     }
 

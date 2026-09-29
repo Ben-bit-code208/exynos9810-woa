@@ -59,6 +59,25 @@ public class ImageBuilderTests
     }
 
     [Fact]
+    public async Task OpensAnIsoReadOnlyAndFindsItsInstallImage()
+    {
+        var script = WindowsMedia.MountIsoScript(@"D:\iso\it's.iso");
+        Assert.Contains(@"-ImagePath 'D:\iso\it''s.iso'", script, StringComparison.Ordinal);
+        Assert.Contains("-Access ReadOnly -StorageType ISO", script, StringComparison.Ordinal);
+        Assert.Contains("if (-not $img.Attached)", script, StringComparison.Ordinal);
+
+        // No drive letter: a clear error instead of "no install.wim".
+        var runner = new RecordingRunner { StdOut = _ => "\r\n" };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new WindowsMedia(runner, @"C:\sys").ResolveInstallImageAsync(@"D:\w.iso"));
+        Assert.Contains(runner.Calls, c => c.StartsWith("powershell.exe -NoProfile", StringComparison.Ordinal));
+
+        // A .wim is used as is, without PowerShell.
+        var wimRunner = new RecordingRunner();
+        Assert.Null(await new WindowsMedia(wimRunner, @"C:\sys").ResolveInstallImageAsync(@"D:\missing\install.wim"));
+        Assert.Empty(wimRunner.Calls);
+    }
+
+    [Fact]
     public void DiscoversDriverFolders()
     {
         var dir = Directory.CreateTempSubdirectory("s9woa-drv").FullName;

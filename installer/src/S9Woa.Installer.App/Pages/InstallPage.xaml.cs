@@ -14,6 +14,8 @@ namespace S9Woa.Installer.App.Pages;
 public sealed partial class InstallPage : Page, IWizardStep
 {
     private readonly List<StageItem> _items;
+    private readonly StageProgress _progress = new();
+    private StageItem? _current;
     private CancellationTokenSource? _cts;
     private bool _running;
 
@@ -36,6 +38,7 @@ public sealed partial class InstallPage : Page, IWizardStep
         ReviewAccount.Text = AppServices.Unattend.Username + (AppServices.Unattend.Password is null ? " · no password" : "");
         AppServices.LogWritten += OnLog;
         Unloaded += (_, _) => AppServices.LogWritten -= OnLog;
+        UpdateNow();
     }
 
     public event EventHandler? StateChanged;
@@ -56,7 +59,45 @@ public sealed partial class InstallPage : Page, IWizardStep
     {
         LogText.Text += line + Environment.NewLine;
         LogScroll.ChangeView(null, LogScroll.ScrollableHeight, null);
+        if (_running && _progress.Observe(line))
+        {
+            UpdateNow();
+        }
     });
+
+    /// <summary>The progress card: the running step with its own bar, or what comes next, plus the whole install.</summary>
+    private void UpdateNow()
+    {
+        static bool Finished(StageItem i) => i.Status is StageStatus.Done or StageStatus.Skipped;
+        var total = _items.Count;
+        var finished = _items.Count(Finished);
+        var running = _running ? _current : null;
+        OverallProgress.Value = StageProgress.Overall(_items.Select(i => (i.Definition.Id, Finished(i))), running?.Definition.Id, _progress.Fraction);
+        OverallText.Text = $"{finished} of {total} steps done";
+        if (running is not null)
+        {
+            NowCaption.Text = $"Step {_items.IndexOf(running) + 1} of {total}";
+            NowTitle.Text = running.Title;
+            NowDetail.Text = _progress.Detail.Length > 0 ? _progress.Detail : running.Summary;
+            StepProgress.Visibility = Visibility.Visible;
+            StepProgress.IsIndeterminate = _progress.Fraction is null;
+            StepProgress.Value = _progress.Fraction ?? 0;
+            return;
+        }
+        StepProgress.Visibility = Visibility.Collapsed;
+        var failed = _items.FirstOrDefault(i => i.Status == StageStatus.Failed);
+        var next = failed ?? _items.FirstOrDefault(i => !Finished(i));
+        if (next is null)
+        {
+            NowCaption.Text = "Finished";
+            NowTitle.Text = "Windows is installed";
+            NowDetail.Text = "Unplug the phone. Windows finishes setting itself up and signs you in.";
+            return;
+        }
+        NowCaption.Text = failed is not null ? "Stopped at" : finished == 0 ? "First step" : "Next step";
+        NowTitle.Text = next.Title;
+        NowDetail.Text = next.Summary;
+    }
 
     private void SetStatus(StageItem item, StageStatus status, string? detail = null)
     {
@@ -68,10 +109,11 @@ public sealed partial class InstallPage : Page, IWizardStep
     private void SetRunning(bool running)
     {
         _running = running;
-        RunningPanel.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        CancelButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         ExperimentalToggle.IsEnabled = !running;
         VerifyToggle.IsEnabled = !running;
         HeadlineText.Text = running ? "Installing Windows" : HeadlineText.Text;
+        UpdateNow();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -107,9 +149,13 @@ public sealed partial class InstallPage : Page, IWizardStep
                     return;
                 }
                 SetStatus(item, StageStatus.Running);
+                _current = item;
+                _progress.Begin(item.Definition.Id);
+                UpdateNow();
                 AppServices.Log($"stage {item.Definition.Id}: {item.Title}");
                 var (ok, message) = await RunStageAsync(item.Definition, _cts.Token);
                 SetStatus(item, ok ? StageStatus.Done : StageStatus.Failed, message);
+                UpdateNow();
                 if (!ok)
                 {
                     AppServices.Log($"stage {item.Definition.Id} stopped: {message}");
@@ -384,12 +430,20 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             return (false, "Choose Windows media on the Windows image page.");
         }
-        var install = WindowsMedia.FindInstallImage(AppServices.MediaPath);
+        var media = new WindowsMedia(AppServices.Runner);
+        string? install;
+        try
+        {
+            install = await media.ResolveInstallImageAsync(AppServices.MediaPath, ct);
+        }
+        catch (InvalidOperationException e)
+        {
+            return (false, e.Message);
+        }
         if (install is null)
         {
-            return (false, "The media does not contain sources\\install.wim or install.esd. For an .iso, extract or mount it first.");
+            return (false, "The media does not contain sources\\install.wim or install.esd. Choose a Windows 11 ARM64 ISO, or its install.wim or install.esd.");
         }
-        var media = new WindowsMedia(AppServices.Runner);
         var editions = await media.GetEditionsAsync(install, ct);
         var chosen = WindowsMedia.ChooseEdition(editions);
         var build = await media.GetBuildAsync(install, chosen.Index, ct);
