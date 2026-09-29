@@ -121,11 +121,7 @@ public sealed class VhdxImageBuilder
             await File.WriteAllTextAsync(unattendPath, UnattendXml.Build(unattend), ct).ConfigureAwait(false);
 
             log?.Report("Writing UEFI boot files with bcdboot...");
-            var r = await _runner.RunAsync(_bcdboot, [$"{winRoot}Windows", "/s", esp, "/f", "UEFI"], BootTimeout, ct).ConfigureAwait(false);
-            if (!r.Succeeded)
-            {
-                throw new InvalidOperationException($"bcdboot failed: {(r.StdErr + r.StdOut).Trim()}");
-            }
+            await WriteBootFilesAsync($"{winRoot}Windows", esp, ct).ConfigureAwait(false);
             await _boot.ConfigureForPhoneAsync(Path.Combine(esp + "\\", @"EFI\Microsoft\Boot\BCD"), log, ct).ConfigureAwait(false);
             loaderSha = await Sha256Async(Path.Combine(winRoot, @"Windows\System32\winload.efi"), ct).ConfigureAwait(false);
             kernelSha = await Sha256Async(Path.Combine(winRoot, @"Windows\System32\ntoskrnl.exe"), ct).ConfigureAwait(false);
@@ -158,6 +154,28 @@ public sealed class VhdxImageBuilder
         finally
         {
             await RunScript(DetachScript(vhdxPath), CancellationToken.None).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Runs bcdboot for the phone, not for this PC. Current bcdboot picks the 2023-signed
+    /// "EX" boot manager when this PC has Secure Boot on, and fails for images that predate
+    /// it (22621.2428 has no <c>Boot\EFI_EX</c>). <c>/offline</c> makes it use the image's own
+    /// boot manager regardless of this PC; older bcdboot lacks the switch, so retry without it.
+    /// </summary>
+    internal async Task WriteBootFilesAsync(string windowsDir, string esp, CancellationToken ct)
+    {
+        string[] args = [windowsDir, "/s", esp, "/f", "UEFI"];
+        var r = await _runner.RunAsync(_bcdboot, [.. args, "/offline"], BootTimeout, ct).ConfigureAwait(false);
+        if (r.Succeeded)
+        {
+            return;
+        }
+        var fallback = await _runner.RunAsync(_bcdboot, args, BootTimeout, ct).ConfigureAwait(false);
+        if (!fallback.Succeeded)
+        {
+            throw new InvalidOperationException(
+                $"bcdboot failed: {(fallback.StdErr + fallback.StdOut).Trim()} (with /offline: {(r.StdErr + r.StdOut).Trim()})");
         }
     }
 

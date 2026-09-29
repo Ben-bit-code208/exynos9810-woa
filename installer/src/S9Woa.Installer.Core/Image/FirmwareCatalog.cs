@@ -79,7 +79,9 @@ public sealed class FirmwareCatalog
     public FirmwareImage? ForMediaBuild(string build) =>
         Images.FirstOrDefault(i => i.Windows == build || i.MediaBuilds.Contains(build));
 
-    public string SupportedBuilds => string.Join(", ", Images.Select(i => i.Windows));
+    /// <summary>Every media build (as DISM reports it) that some image can start.</summary>
+    public string SupportedBuilds => string.Join(", ",
+        Images.SelectMany(i => i.MediaBuilds.Prepend(i.Windows)).Distinct(StringComparer.Ordinal));
 
     /// <summary>True when the file on disk still has the catalogued SHA-256.</summary>
     public bool Verify(FirmwareImage image)

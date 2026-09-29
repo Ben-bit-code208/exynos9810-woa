@@ -42,7 +42,7 @@ public class BootChainTests : IDisposable
         Assert.Equal("b.img", catalog.ForMediaBuild("22631.7584")!.File);
         Assert.Equal("a.img", catalog.ForMediaBuild("22621.2428")!.File);
         Assert.Null(catalog.ForMediaBuild("22631.7633"));
-        Assert.Equal("22621.2428, 22621.7582", catalog.SupportedBuilds);
+        Assert.Equal("22621.2428, 22631.2428, 22621.7582, 22631.7584", catalog.SupportedBuilds);
         Assert.All(catalog.Images, i => Assert.True(catalog.Verify(i)));
 
         var copy = catalog.CopyTo(Path.Combine(_root, "copy"));

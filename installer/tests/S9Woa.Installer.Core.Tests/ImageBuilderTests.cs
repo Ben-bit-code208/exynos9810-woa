@@ -121,4 +121,32 @@ public class ImageBuilderTests
         Assert.Contains("Dismount-VHD", VhdxImageBuilder.DetachScript(@"C:\img\s9.vhdx"), StringComparison.Ordinal);
         Assert.DoesNotContain('C', VhdxImageBuilder.FreeDriveLetters());
     }
+
+    private sealed class FailingOfflineRunner(bool offlineSupported) : IProcessRunner
+    {
+        public List<string> Calls { get; } = [];
+        public Task<ProcessResult> RunAsync(string fileName, IReadOnlyList<string> arguments, TimeSpan timeout,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add(string.Join(' ', arguments));
+            var ok = offlineSupported || !arguments.Contains("/offline");
+            return Task.FromResult(new ProcessResult(ok ? 0 : 1, ok ? "Boot files successfully created." : "The parameter is incorrect.", ""));
+        }
+    }
+
+    [Theory]
+    [InlineData(true, 1)]
+    [InlineData(false, 2)]
+    public async Task BcdbootTargetsThePhoneNotThisPc(bool offlineSupported, int calls)
+    {
+        var runner = new FailingOfflineRunner(offlineSupported);
+        var builder = new VhdxImageBuilder(runner, @"C:\sys");
+        await builder.WriteBootFilesAsync(@"W:\Windows", "S:", CancellationToken.None);
+        Assert.Equal(calls, runner.Calls.Count);
+        Assert.Equal(@"W:\Windows /s S: /f UEFI /offline", runner.Calls[0]);
+        if (calls == 2)
+        {
+            Assert.Equal(@"W:\Windows /s S: /f UEFI", runner.Calls[1]);
+        }
+    }
 }
