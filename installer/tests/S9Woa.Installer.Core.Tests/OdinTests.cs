@@ -31,11 +31,12 @@ public class OdinTests
         ("SYSTEM", 18, 0, "system.img"), ("USERDATA", 25, 0, "userdata.img"));
 
     /// <summary>Simulates a Samsung bootloader in Download mode.</summary>
-    private sealed class FakePhone(short version, byte[] pit, int failEndCode = 0, bool refuseEndSession = false) : IOdinTransport
+    private sealed class FakePhone(short version, byte[] pit, int failEndCode = 0, bool refuseEndSession = false, int refuseEndSessionFrom = int.MaxValue) : IOdinTransport
     {
         private readonly Queue<byte> _out = new();
         private int _partsLeft;
         private int _partIndex;
+        private int _endSessions;
 
         public int? FilePartSize { get; private set; }
         public long? TotalBytes { get; private set; }
@@ -93,7 +94,8 @@ public class OdinTests
                     break;
                 case (0x67, 0x00):
                     // The SM-G965F (G965FXXUHFVG4) refuses the closing handshake with -1 after a good flash.
-                    Respond(refuseEndSession ? unchecked((int)0xFFFFFFFF) : type, refuseEndSession ? -1 : 0);
+                    var refuse = refuseEndSession || ++_endSessions >= refuseEndSessionFrom;
+                    Respond(refuse ? unchecked((int)0xFFFFFFFF) : type, refuse ? -1 : 0);
                     break;
                 case (0x66, 0x02):
                     _partsLeft = arg / (FilePartSize ?? 128 * 1024);
@@ -249,8 +251,31 @@ public class OdinTests
             var sent = phone.Received.ToArray();
             var bcbStart = 4 * 1024 * 1024; // the RECOVERY image padded to whole 1 MiB parts
             Assert.Equal("boot-recovery", System.Text.Encoding.ASCII.GetString(sent, bcbStart, 13));
-            Assert.Equal(3 * 1024 * 1024 + 7 + 4096, phone.TotalBytes);
+            Assert.Equal(4096, phone.TotalBytes); // the MISC request goes in a session of its own
+            Assert.Equal(2, phone.Commands.Count(c => c == "64/00"));
             Assert.Equal(["67/00", "67/01"], phone.Commands.TakeLast(2));
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
+    public void ARefusedBootRequestKeepsTheTwrpFlashAndDoesNotReboot()
+    {
+        var pit = BuildPit(("BOOT", 10, 0, "boot.img"), ("RECOVERY", 11, 0, "recovery.img"), ("MISC", 15, 0, "misc.bin"));
+        var phone = new FakePhone(3, pit, refuseEndSessionFrom: 2);
+        var image = WriteImage(2 * 1024 * 1024);
+        var log = new List<string>();
+        try
+        {
+            var restarted = Flasher(phone).Flash("COM4", image, new SyncProgress(log.Add));
+
+            Assert.False(restarted);
+            Assert.Contains("TWRP flashed.", log);
+            Assert.DoesNotContain("67/01", phone.Commands); // rebooting would let Android restore its recovery
+            Assert.Contains(log, l => l.Contains("by hand", StringComparison.Ordinal));
         }
         finally
         {

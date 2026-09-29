@@ -156,8 +156,7 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
 
         using var image = File.OpenRead(twrpImage);
         var length = image.Length;
-        var bcb = BootRouteService.BootRecoveryMessage();
-        odin.SetTotalBytes(length + (misc is null ? 0 : bcb.Length));
+        odin.SetTotalBytes(length);
         log?.Report($"Flashing {Path.GetFileName(twrpImage)} ({length / 1024} KiB) to RECOVERY...");
         var lastDecile = -1;
         odin.FlashPartition(image, length, recovery, sent =>
@@ -169,11 +168,6 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
                 log?.Report($"  {decile * 10}%");
             }
         });
-        if (misc is not null)
-        {
-            log?.Report("Asking the bootloader to start TWRP next (MISC boot-recovery request)...");
-            odin.FlashPartition(new MemoryStream(bcb), bcb.Length, misc);
-        }
         try
         {
             odin.EndSession();
@@ -185,12 +179,31 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
             // flashed (RECOVERY)". The image was not accepted.
             throw new OdinException($"The phone refused TWRP when the session ended ({e.Message}). {OdinSession.OfficialBinariesOnlyHelp}");
         }
+        log?.Report("TWRP flashed.");
         if (misc is null)
         {
-            log?.Report("TWRP flashed. The phone stays in Download mode until you restart it.");
+            log?.Report("The phone stays in Download mode until you restart it.");
             return false;
         }
-        log?.Report("TWRP flashed. Restarting the phone into TWRP...");
+
+        // A separate session, so a bootloader that won't take MISC can't cost the TWRP flash (it
+        // ends a combined session with -1 and nothing on screen). Without the request the phone
+        // must not simply reboot: Android would put its own recovery back.
+        var bcb = BootRouteService.BootRecoveryMessage();
+        try
+        {
+            log?.Report("Asking the bootloader to start TWRP next (MISC boot-recovery request)...");
+            odin.BeginSession();
+            odin.SetTotalBytes(bcb.Length);
+            odin.FlashPartition(new MemoryStream(bcb), bcb.Length, misc);
+            odin.EndSession();
+        }
+        catch (Exception e) when (e is OdinException or TimeoutException or IOException)
+        {
+            log?.Report($"The phone didn't take the request ({e.Message}); it has to be started into TWRP by hand.");
+            return false;
+        }
+        log?.Report("Restarting the phone into TWRP...");
         try
         {
             odin.Reboot();
