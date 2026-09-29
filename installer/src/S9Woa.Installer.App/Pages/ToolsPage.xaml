@@ -4,7 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer Style="{StaticResource PageRootStyle}">
-        <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Left">
+        <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
                 <TextBlock Text="Device tools" Style="{StaticResource PageTitleStyle}" />
                 <TextBlock x:Name="DeviceLine" Style="{StaticResource PageSubtitleStyle}" />
@@ -12,7 +12,7 @@
 
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Restart the phone into…" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Restart the phone into…" Style="{StaticResource BodyStrongTextBlockStyle}" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Click="OnRecovery" MinWidth="150">
                             <StackPanel Spacing="4" Padding="4,6">
@@ -40,7 +40,7 @@
 
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Restart to TWRP (from Windows on the phone)" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Restart to TWRP (from Windows on the phone)" Style="{StaticResource BodyStrongTextBlockStyle}" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="When you are running Windows on the Galaxy S9+, this schedules the next restart to boot TWRP instead of Windows, then restarts. It talks to the Exynos9810 storage driver directly — no USB cable or ADB needed." />
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -52,7 +52,7 @@
 
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Diagnostics" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Diagnostics" Style="{StaticResource BodyStrongTextBlockStyle}" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="Save phone info" Click="OnSaveInfo" />
                         <Button Content="Open logs folder" Click="OnOpenLogs" />
@@ -63,7 +63,7 @@
 
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Installer progress" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Installer progress" Style="{StaticResource BodyStrongTextBlockStyle}" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="The installer remembers finished steps so it can resume after a restart. Reset this only if you want to start over with a different phone or image. It does not touch the phone." />
                     <Button Content="Reset installer progress" Click="OnReset" />

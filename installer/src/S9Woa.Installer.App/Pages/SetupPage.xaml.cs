@@ -13,11 +13,12 @@ namespace S9Woa.Installer.App.Pages;
 /// takes the user's TWRP download. The install flow stays locked until every
 /// required tool is ready.
 /// </summary>
-public sealed partial class SetupPage : Page
+public sealed partial class SetupPage : Page, IWizardStep
 {
     private readonly List<ToolRow> _rows = Tools.All.Select(t => new ToolRow(t)).ToList();
     private readonly Progress<string> _log = new(AppServices.Log);
     private bool _running;
+    private bool _complete;
 
     public SetupPage()
     {
@@ -26,6 +27,20 @@ public sealed partial class SetupPage : Page
         RepoBox.Text = AppServices.Toolset.Config.ReleaseRepo;
         WingetBar.IsOpen = !AppServices.Toolset.WingetAvailable;
         Refresh();
+    }
+
+    public event EventHandler? StateChanged;
+
+    public bool CanAdvance => _complete && !_running;
+
+    public bool CanGoBack => !_running;
+
+    public Task<bool> OnAdvanceAsync()
+    {
+        AppServices.Toolset.Config.SetupCompleted = true;
+        AppServices.Toolset.SaveConfig();
+        AppServices.Log("setup completed");
+        return Task.FromResult(true);
     }
 
     private ToolRow Row(object sender) => _rows.First(r => r.Id == (string)((FrameworkElement)sender).Tag);
@@ -44,16 +59,16 @@ public sealed partial class SetupPage : Page
 
         var complete = ToolsetManager.IsComplete(statuses);
         var pending = Tools.All.Where(t => t.Required && statuses[t.Id].State != ToolState.Ready).Select(t => t.Name).ToList();
-        SummaryTitle.Text = complete ? "Everything is ready" : $"{pending.Count} item(s) still needed";
+        SummaryTitle.Text = complete ? "Everything is ready" : pending.Count == 1 ? "1 item still needed" : $"{pending.Count} items still needed";
         SummaryText.Text = complete
             ? "All tools and files are in place. The Download-mode driver step happens later, while installing TWRP."
             : "Set up automatically installs the programs and downloads the verified boot files. Still needed: " + string.Join(", ", pending) + ".";
-        FinishButton.IsEnabled = complete && !_running;
-        AutoButton.IsEnabled = !_running;
+        AutoButton.IsEnabled = !_running && !complete;
         BuildFolderText.Text = AppServices.Toolset.Config.BuildFolder is { } f
             ? $"Local build folder: {f}"
             : "No local build folder. UEFI and drivers come from the latest release.";
-        App.Window?.ApplySetupGate(complete);
+        _complete = complete;
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private async Task RunAsync(ToolRow? row, string what, Func<Task<string?>> action)
@@ -108,7 +123,7 @@ public sealed partial class SetupPage : Page
         var needsUser = Tools.All.Where(t => t.Required && result[t.Id].State != ToolState.Ready).Select(t => t.Name).ToList();
         if (needsUser.Count == 0)
         {
-            Report(InfoBarSeverity.Success, "Setup complete", "Everything is installed. Press Finish setup to continue.");
+            Report(InfoBarSeverity.Success, "Setup complete", "Everything is installed. Press Continue.");
         }
         else
         {
@@ -208,12 +223,4 @@ public sealed partial class SetupPage : Page
     }
 
     private void OnRecheck(object sender, RoutedEventArgs e) => Refresh();
-
-    private void OnFinish(object sender, RoutedEventArgs e)
-    {
-        AppServices.Toolset.Config.SetupCompleted = true;
-        AppServices.Toolset.SaveConfig();
-        AppServices.Log("setup completed");
-        App.Window?.NavigateTo("host");
-    }
 }

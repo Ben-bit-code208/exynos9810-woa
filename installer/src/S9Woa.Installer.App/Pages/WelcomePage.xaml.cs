@@ -4,7 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace S9Woa.Installer.App.Pages;
 
-public sealed partial class WelcomePage : Page
+public sealed partial class WelcomePage : Page, IWizardStep
 {
     public WelcomePage()
     {
@@ -12,12 +12,15 @@ public sealed partial class WelcomePage : Page
         AcceptBox.IsChecked = AppServices.RisksAccepted;
     }
 
+    public event EventHandler? StateChanged;
+
+    public bool CanAdvance => AppServices.RisksAccepted;
+
+    public string? NextLabel => "Get started";
+
     private void OnAcceptChanged(object sender, RoutedEventArgs e)
     {
         AppServices.RisksAccepted = AcceptBox.IsChecked == true;
-        ContinueButton.IsEnabled = AppServices.RisksAccepted;
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
-
-    private void OnContinue(object sender, RoutedEventArgs e) =>
-        App.Window?.NavigateTo(App.Window.SetupComplete ? "host" : "setup");
 }

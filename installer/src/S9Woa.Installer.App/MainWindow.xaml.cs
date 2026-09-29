@@ -2,23 +2,31 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.UI.Xaml.Navigation;
 using S9Woa.Installer.App.Pages;
 
 namespace S9Woa.Installer.App;
 
+/// <summary>
+/// Wizard shell: a step rail, one page at a time, and a fixed footer with Back and a single
+/// primary action. Pages implement <see cref="IWizardStep"/> to gate and label that action.
+/// </summary>
 public sealed partial class MainWindow : Window
 {
-    private static readonly Dictionary<string, Type> Pages = new()
-    {
-        ["welcome"] = typeof(WelcomePage),
-        ["setup"] = typeof(SetupPage),
-        ["host"] = typeof(HostPage),
-        ["phone"] = typeof(PhonePage),
-        ["image"] = typeof(ImagePage),
-        ["install"] = typeof(InstallPage),
-        ["tools"] = typeof(ToolsPage),
-        ["about"] = typeof(AboutPage),
-    };
+    private readonly List<WizardStepItem> _steps =
+    [
+        new(0, "welcome", "Welcome", typeof(WelcomePage)),
+        new(1, "setup", "Set up", typeof(SetupPage)),
+        new(2, "host", "This PC", typeof(HostPage)),
+        new(3, "phone", "Your phone", typeof(PhonePage)),
+        new(4, "image", "Windows", typeof(ImagePage)),
+        new(5, "install", "Install", typeof(InstallPage)),
+    ];
+
+    private int _current = -1;
+    private int _furthest;
+    private bool _onSidePage;
+    private IWizardStep? _page;
 
     public MainWindow()
     {
@@ -26,43 +34,158 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 820));
-
-        var complete = Core.Toolset.ToolsetManager.IsComplete(AppServices.Toolset.DetectAll());
-        ApplySetupGate(complete);
-        // First run starts at Welcome; afterwards, a broken toolset goes straight to Setup.
-        Nav.SelectedItem = !complete && AppServices.Toolset.Config.SetupCompleted ? SetupItem : WelcomeItem;
-    }
-
-    /// <summary>True once every required tool is ready; the install flow stays locked until then.</summary>
-    public bool SetupComplete { get; private set; }
-
-    public void ApplySetupGate(bool complete)
-    {
-        SetupComplete = complete;
-        foreach (var item in new[] { HostItem, PhoneItem, ImageItem, InstallItem })
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 800));
+        _steps[^1].IsLast = true;
+        StepList.ItemsSource = _steps;
+#if DEBUG
+        // UI development only: reach every step without completing the earlier ones.
+        if (Environment.GetCommandLineArgs().Contains("--unlock-all-steps"))
         {
-            item.IsEnabled = complete;
+            _furthest = _steps.Count - 1;
         }
+#endif
+        GoTo(0);
     }
 
+    /// <summary>Jumps to a step (if already reached) or a side page by tag.</summary>
     public void NavigateTo(string tag)
     {
-        var item = Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>()
-            .First(i => (string)i.Tag == tag);
-        if (!item.IsEnabled)
+        switch (tag)
         {
-            item = SetupItem;
+            case "tools":
+                ShowSidePage(typeof(ToolsPage));
+                return;
+            case "about":
+                ShowSidePage(typeof(AboutPage));
+                return;
         }
-        Nav.SelectedItem = item;
+        var step = _steps.FirstOrDefault(s => s.Tag == tag);
+        if (step is not null && step.Index <= _furthest)
+        {
+            GoTo(step.Index);
+        }
     }
 
-    private void OnNavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private void GoTo(int index)
     {
-        if (args.SelectedItem is NavigationViewItem { Tag: string tag } && Pages.TryGetValue(tag, out var page)
-            && ContentFrame.CurrentSourcePageType != page)
+        if (index == _current && !_onSidePage)
         {
-            ContentFrame.Navigate(page, null, new EntranceNavigationTransitionInfo());
+            return;
+        }
+        var forward = index >= _current && !_onSidePage;
+        _current = index;
+        _furthest = Math.Max(_furthest, index);
+        _onSidePage = false;
+        UpdateRail();
+        ContentFrame.Navigate(_steps[index].Page, null, new SlideNavigationTransitionInfo
+        {
+            Effect = forward ? SlideNavigationTransitionEffect.FromRight : SlideNavigationTransitionEffect.FromLeft,
+        });
+    }
+
+    private void ShowSidePage(Type page)
+    {
+        if (_page is { CanGoBack: false } || ContentFrame.CurrentSourcePageType == page)
+        {
+            return;
+        }
+        _onSidePage = true;
+        ContentFrame.Navigate(page, null, new DrillInNavigationTransitionInfo());
+    }
+
+    private void UpdateRail()
+    {
+        foreach (var s in _steps)
+        {
+            s.State = s.Index == _current ? StepState.Current
+                : s.Index < _current || s.Index <= _furthest ? StepState.Done
+                : StepState.Upcoming;
+            s.Reachable = s.Index <= _furthest && s.Index != _current;
         }
     }
+
+    private void OnNavigated(object sender, NavigationEventArgs e)
+    {
+        if (_page is not null)
+        {
+            _page.StateChanged -= OnPageStateChanged;
+        }
+        _page = e.Content as IWizardStep;
+        if (_page is not null)
+        {
+            _page.StateChanged += OnPageStateChanged;
+        }
+        UpdateFooter();
+    }
+
+    private void OnPageStateChanged(object? sender, EventArgs e) => DispatcherQueue.TryEnqueue(UpdateFooter);
+
+    private void UpdateFooter()
+    {
+        if (_onSidePage)
+        {
+            StepCaption.Text = "";
+            BackButton.Content = "Back to installer";
+            BackButton.Visibility = Visibility.Visible;
+            BackButton.IsEnabled = true;
+            NextButton.Visibility = Visibility.Collapsed;
+            StepList.IsHitTestVisible = true;
+            return;
+        }
+        var canLeave = _page?.CanGoBack ?? true;
+        StepCaption.Text = $"Step {_current + 1} of {_steps.Count}";
+        BackButton.Content = "Back";
+        BackButton.Visibility = _current > 0 ? Visibility.Visible : Visibility.Collapsed;
+        BackButton.IsEnabled = canLeave;
+        var label = _page?.NextLabel;
+        var isLast = _current == _steps.Count - 1;
+        NextButton.Visibility = isLast && label is null ? Visibility.Collapsed : Visibility.Visible;
+        NextButton.Content = label ?? "Continue";
+        NextButton.IsEnabled = _page?.CanAdvance ?? true;
+        StepList.IsHitTestVisible = canLeave;
+        ToolsLink.IsEnabled = canLeave;
+        AboutLink.IsEnabled = canLeave;
+    }
+
+    private async void OnNext(object sender, RoutedEventArgs e)
+    {
+        if (_page is null)
+        {
+            return;
+        }
+        NextButton.IsEnabled = false;
+        var advance = await _page.OnAdvanceAsync();
+        if (advance && _current < _steps.Count - 1)
+        {
+            GoTo(_current + 1);
+        }
+        else
+        {
+            UpdateFooter();
+        }
+    }
+
+    private void OnBack(object sender, RoutedEventArgs e)
+    {
+        if (_onSidePage)
+        {
+            GoTo(_current);
+        }
+        else if (_current > 0)
+        {
+            GoTo(_current - 1);
+        }
+    }
+
+    private void OnStepClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: int index } && index <= _furthest && (_page?.CanGoBack ?? true))
+        {
+            GoTo(index);
+        }
+    }
+
+    private void OnTools(object sender, RoutedEventArgs e) => ShowSidePage(typeof(ToolsPage));
+
+    private void OnAbout(object sender, RoutedEventArgs e) => ShowSidePage(typeof(AboutPage));
 }

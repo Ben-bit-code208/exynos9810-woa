@@ -11,24 +11,44 @@ using S9Woa.Installer.Core.Stages;
 
 namespace S9Woa.Installer.App.Pages;
 
-public sealed partial class InstallPage : Page
+public sealed partial class InstallPage : Page, IWizardStep
 {
     private readonly List<StageItem> _items;
     private CancellationTokenSource? _cts;
+    private bool _running;
 
     public InstallPage()
     {
         InitializeComponent();
         _items = StageCatalog.All.Select(s => new StageItem(s) { Status = AppServices.State.StatusOf(s.Id) }).ToList();
         Timeline.ItemsSource = _items;
-        StartText.Text = _items.Any(i => i.Status == StageStatus.Done) ? "Resume" : "Start";
+        ExperimentalToggle.IsOn = AppServices.ExperimentalEnabled;
         var dev = AppServices.CurrentDevice;
-        ReviewText.Text =
-            $"Phone: {(dev is null ? "not connected" : $"{dev.Model} · {dev.Bootloader}")}   ·   " +
-            $"Media: {(AppServices.MediaPath is null ? "not selected" : Path.GetFileName(AppServices.MediaPath))}   ·   " +
-            $"Image: {AppServices.Profile}";
+        ReviewPhone.Text = dev is null ? "Not connected" : $"{dev.Model} · {dev.Bootloader}";
+        ReviewMedia.Text = AppServices.MediaPath is null ? "Not selected" : Path.GetFileName(AppServices.MediaPath);
+        ReviewProfile.Text = AppServices.Profile switch
+        {
+            SlimProfile.None => "Stock",
+            SlimProfile.Lite => "Lite",
+            _ => "Core",
+        };
+        ReviewAccount.Text = AppServices.Unattend.Username + (AppServices.Unattend.Password is null ? " · no password" : "");
         AppServices.LogWritten += OnLog;
         Unloaded += (_, _) => AppServices.LogWritten -= OnLog;
+    }
+
+    public event EventHandler? StateChanged;
+
+    public bool CanAdvance => !_running;
+
+    public bool CanGoBack => !_running;
+
+    public string? NextLabel => _running ? "Installing…" : _items.Any(i => i.Status == StageStatus.Done) ? "Resume" : "Install";
+
+    public Task<bool> OnAdvanceAsync()
+    {
+        _ = RunAllAsync();
+        return Task.FromResult(false);
     }
 
     private void OnLog(string line) => DispatcherQueue.TryEnqueue(() =>
@@ -44,12 +64,20 @@ public sealed partial class InstallPage : Page
         AppServices.SaveState();
     }
 
-    private async void OnStart(object sender, RoutedEventArgs e)
+    private void SetRunning(bool running)
+    {
+        _running = running;
+        RunningPanel.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        ExperimentalToggle.IsEnabled = !running;
+        HeadlineText.Text = running ? "Installing Windows" : HeadlineText.Text;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task RunAllAsync()
     {
         _cts = new CancellationTokenSource();
-        StartButton.IsEnabled = false;
-        CancelButton.IsEnabled = true;
         ResultBar.IsOpen = false;
+        SetRunning(true);
         try
         {
             foreach (var item in _items)
@@ -68,7 +96,7 @@ public sealed partial class InstallPage : Page
                 if (avail == StageAvailability.Experimental && !AppServices.ExperimentalEnabled)
                 {
                     Report(InfoBarSeverity.Informational, item.Title,
-                        "This step is experimental. Turn on \"Run experimental steps\" below to continue on your own device.");
+                        "This step is experimental. Turn on \"Run experimental steps\" to continue on your own device.");
                     return;
                 }
                 SetStatus(item, StageStatus.Running);
@@ -82,7 +110,9 @@ public sealed partial class InstallPage : Page
                     return;
                 }
             }
-            Report(InfoBarSeverity.Success, "Windows is installed", "Unplug the phone and follow Windows setup on the screen.");
+            HeadlineText.Text = "Windows is installed";
+            LeadText.Text = "Unplug the phone. Windows finishes setting itself up and signs you in.";
+            Report(InfoBarSeverity.Success, "All done", "Windows is installed on your Galaxy S9+.");
         }
         catch (OperationCanceledException)
         {
@@ -92,11 +122,22 @@ public sealed partial class InstallPage : Page
             }
             Report(InfoBarSeverity.Warning, "Cancelled", "Nothing further was written. You can resume later.");
         }
+        catch (Exception e) when (e is InvalidOperationException or IOException or TimeoutException or UnauthorizedAccessException)
+        {
+            foreach (var i in _items.Where(i => i.Status == StageStatus.Running))
+            {
+                SetStatus(i, StageStatus.Failed, e.Message);
+            }
+            AppServices.Log($"install stopped: {e.Message}");
+            Report(InfoBarSeverity.Error, "Stopped", e.Message);
+        }
         finally
         {
-            StartButton.IsEnabled = true;
-            CancelButton.IsEnabled = false;
-            StartText.Text = "Resume";
+            SetRunning(false);
+            if (HeadlineText.Text == "Installing Windows")
+            {
+                HeadlineText.Text = "Ready to install";
+            }
         }
     }
 
@@ -373,7 +414,7 @@ public sealed partial class InstallPage : Page
     private void OnCancel(object sender, RoutedEventArgs e) => _cts?.Cancel();
 
     private void OnExperimentalToggled(object sender, RoutedEventArgs e) =>
-        AppServices.ExperimentalEnabled = ExperimentalToggle.IsChecked == true;
+        AppServices.ExperimentalEnabled = ExperimentalToggle.IsOn;
 
     private void OnOpenLogs(object sender, RoutedEventArgs e)
     {

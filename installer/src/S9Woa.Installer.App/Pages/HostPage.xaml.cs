@@ -8,28 +8,33 @@ using S9Woa.Installer.Core.Stages;
 
 namespace S9Woa.Installer.App.Pages;
 
-public sealed partial class HostPage : Page
+public sealed partial class HostPage : Page, IWizardStep
 {
+    private bool _ok;
+
     public HostPage()
     {
         InitializeComponent();
-        WorkDirBox.Text = AppServices.WorkDirectory;
         Loaded += (_, _) => Evaluate();
     }
 
+    public event EventHandler? StateChanged;
+
+    public bool CanAdvance => _ok;
+
     private void Evaluate()
     {
-        AppServices.WorkDirectory = WorkDirBox.Text.Trim();
+        WorkDirText.Text = AppServices.WorkDirectory;
         var results = HostPreflight.Evaluate(new LocalHostEnvironment(AppServices.AdbPath), AppServices.WorkDirectory);
         Results.ItemsSource = results.Select(r => new CheckItem(r)).ToList();
-        var ok = !results.HasBlockers();
-        ContinueButton.IsEnabled = ok;
-        AppServices.State.Set("host", ok ? StageStatus.Done : StageStatus.Failed);
+        _ok = !results.HasBlockers();
+        AppServices.State.Set("host", _ok ? StageStatus.Done : StageStatus.Failed);
         AppServices.SaveState();
         foreach (var r in results)
         {
             AppServices.Log($"host {r.Id} {r.Severity}: {r.Detail}");
         }
+        StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private async void OnBrowse(object sender, RoutedEventArgs e)
@@ -38,12 +43,10 @@ public sealed partial class HostPage : Page
         var result = await picker.PickSingleFolderAsync();
         if (result is not null)
         {
-            WorkDirBox.Text = Path.Combine(result.Path, "S9WoaInstaller");
+            AppServices.WorkDirectory = Path.Combine(result.Path, "S9WoaInstaller");
             Evaluate();
         }
     }
 
     private void OnRecheck(object sender, RoutedEventArgs e) => Evaluate();
-
-    private void OnContinue(object sender, RoutedEventArgs e) => App.Window?.NavigateTo("phone");
 }

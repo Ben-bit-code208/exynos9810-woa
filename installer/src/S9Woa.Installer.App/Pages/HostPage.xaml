@@ -4,29 +4,36 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer Style="{StaticResource PageRootStyle}">
-        <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Left">
+        <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
                 <TextBlock Text="Check this PC" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}"
-                           Text="The installer builds the Windows image here, so it needs administrator rights, disk space and the Android and Samsung USB tools." />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,8"
+                           Text="The Windows image is built here, so the installer needs administrator rights, room for the image and your phone's backup, and the phone tools." />
             </StackPanel>
+
             <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="12">
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBox x:Name="WorkDirBox" Header="Working folder (image and phone backups)" />
-                        <Button Grid.Column="1" Content="Browse" VerticalAlignment="Bottom" Click="OnBrowse" />
-                    </Grid>
-                    <ItemsControl x:Name="Results" ItemTemplate="{StaticResource CheckItemTemplate}" />
-                </StackPanel>
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Style="{StaticResource IconTileStyle}">
+                        <FontIcon Glyph="&#xE8B7;" FontSize="18" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Text="Working folder" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock x:Name="WorkDirText" Style="{StaticResource CaptionSecondaryStyle}" IsTextSelectionEnabled="True" />
+                    </StackPanel>
+                    <Button Grid.Column="2" Content="Change…" Click="OnBrowse" VerticalAlignment="Center" />
+                </Grid>
             </Border>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="Check again" Click="OnRecheck" />
-                <Button x:Name="ContinueButton" Content="Continue" Style="{StaticResource AccentButtonStyle}" Click="OnContinue" MinWidth="140" />
-            </StackPanel>
+
+            <Border Style="{StaticResource CardStyle}" Padding="20,6">
+                <ItemsControl x:Name="Results" ItemTemplate="{StaticResource CheckItemTemplate}" />
+            </Border>
+
+            <HyperlinkButton Content="Check again" Click="OnRecheck" Padding="0" />
         </StackPanel>
     </ScrollViewer>
 </Page>

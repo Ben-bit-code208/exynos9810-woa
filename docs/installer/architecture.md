@@ -17,13 +17,34 @@ installer/
       Stages/               StageCatalog + resumable InstallState
       Toolset/              first-run toolset: detect, acquire and remember tools
     S9Woa.Installer.App/    WinUI 3 front-end
-      Pages/                Welcome, Setup, Host, Phone, Image, Install, Tools, About
+      Wizard.cs             IWizardStep contract and step-rail model
+      MainWindow            wizard shell: step rail, content surface, footer
+      Pages/                Welcome, Setup, Host, Phone, Image, Install (steps); Tools, About (side pages)
   tests/
     S9Woa.Installer.Core.Tests/   xUnit tests for the engine
 ```
 
 The engine (`S9Woa.Installer.Core`) has no UI dependency so it can be tested and
 scripted. The WinUI app is a thin shell over it.
+
+## Wizard shell
+
+The app is a linear wizard. `MainWindow` owns navigation: a step rail on the
+left (numbered circles that turn into checkmarks), the current page on a
+layered content surface over Mica, and a fixed footer with *Step n of 6*, **Back**
+and one accent primary button. Each step page implements `IWizardStep`:
+
+- `CanAdvance` enables the primary button (for example, Setup only once
+  `ToolsetManager.IsComplete`, Phone only for an eligible device).
+- `NextLabel` names it (*Get started*, *Continue*, *Review*, *Install*).
+- `OnAdvanceAsync` runs before leaving; returning `false` stays on the page
+  (the Install step uses this to start the install in place).
+- `CanGoBack` is `false` while a page is busy; the shell then locks Back, the
+  rail and the side-page links.
+
+The rail lets you jump back to any step already reached, never ahead of it.
+Device tools and About open as side pages outside the flow. Debug builds accept
+`--unlock-all-steps` to reach every step for UI work; Release builds ignore it.
 
 ## First-run toolset
 

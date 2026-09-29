@@ -4,55 +4,69 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer Style="{StaticResource PageRootStyle}">
-        <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Left">
+        <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
-                <TextBlock Text="Choose Windows" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}"
-                           Text="Pick the Windows 11 ARM64 media to install and how much of it to keep." />
+                <TextBlock Text="Choose your Windows" Style="{StaticResource PageTitleStyle}" />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,8"
+                           Text="Pick the Windows 11 ARM64 media, how lean the installed system should be, and the account you'll sign in with." />
             </StackPanel>
 
+            <TextBlock Text="Windows media" Style="{StaticResource SectionHeaderStyle}" />
             <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Windows media" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <RadioButtons x:Name="SourceChoice" SelectionChanged="OnSourceChanged" SelectedIndex="0">
-                        <RadioButton Content="Use an ISO, ESD or WIM file on this PC" />
-                        <RadioButton Content="Download from Microsoft (coming soon)" IsEnabled="False" />
-                    </RadioButtons>
-                    <Grid ColumnSpacing="8" x:Name="FileRow">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBox x:Name="MediaBox" PlaceholderText="Windows 11 ARM64 .iso, .esd or .wim" TextChanged="OnMediaTextChanged" />
-                        <Button Grid.Column="1" Content="Browse" Click="OnBrowse" />
+                        <TextBox x:Name="MediaBox" PlaceholderText="Windows 11 ARM64 .wim, .esd or .iso" TextChanged="OnMediaTextChanged" />
+                        <Button Grid.Column="1" Content="Browse…" Click="OnBrowse" />
                     </Grid>
-                    <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="Validated build"
-                             Message="The drivers are validated on Windows 11 build 22621/22631 (23H2) ARM64. Newer builds such as 24H2 (26100) have not been tested on this phone." />
+                    <TextBlock x:Name="MediaHint" Style="{StaticResource CaptionSecondaryStyle}"
+                               Text="Validated with Windows 11 IoT Enterprise 23H2 (build 22631) ARM64. Newer builds haven't been tested on this phone." />
                 </StackPanel>
             </Border>
 
-            <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Lightweight image" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="The phone has 6 GB of RAM and a slow CPU for Windows. Removing inbox apps and background services makes it noticeably faster." />
-                    <RadioButtons x:Name="ProfileChoice" SelectionChanged="OnProfileChanged">
-                        <RadioButton Content="Stock" Tag="None" />
-                        <RadioButton Content="Lite (recommended)" Tag="Lite" />
-                        <RadioButton Content="Core (smallest, not updatable)" Tag="Core" />
-                    </RadioButtons>
-                    <TextBlock x:Name="ProfileSummary" TextWrapping="Wrap" />
-                    <InfoBar x:Name="CoreWarning" IsClosable="False" Severity="Warning" Title="Core removes safety nets"
-                             Message="No Windows Update, no Defender antivirus, no recovery environment and no way to add features or languages later. Only choose Core for a throwaway or offline device." />
-                </StackPanel>
-            </Border>
+            <TextBlock Text="Image size" Style="{StaticResource SectionHeaderStyle}" />
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="StockCard" Style="{StaticResource CardStyle}" Padding="14,12">
+                    <RadioButton x:Name="StockOption" GroupName="Profile" Tag="None" Checked="OnProfileChecked" VerticalAlignment="Top" VerticalContentAlignment="Top">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Stock" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="Windows as shipped, plus drivers." Style="{StaticResource CaptionSecondaryStyle}" />
+                        </StackPanel>
+                    </RadioButton>
+                </Border>
+                <Border x:Name="LiteCard" Grid.Column="1" Style="{StaticResource CardStyle}" Padding="14,12">
+                    <RadioButton x:Name="LiteOption" GroupName="Profile" Tag="Lite" Checked="OnProfileChecked" VerticalAlignment="Top" VerticalContentAlignment="Top">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Lite" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="Recommended. Leaner, still updatable." Style="{StaticResource CaptionSecondaryStyle}" />
+                        </StackPanel>
+                    </RadioButton>
+                </Border>
+                <Border x:Name="CoreCard" Grid.Column="2" Style="{StaticResource CardStyle}" Padding="14,12">
+                    <RadioButton x:Name="CoreOption" GroupName="Profile" Tag="Core" Checked="OnProfileChecked" VerticalAlignment="Top" VerticalContentAlignment="Top">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Core" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Text="Smallest and fastest. Not updatable." Style="{StaticResource CaptionSecondaryStyle}" />
+                        </StackPanel>
+                    </RadioButton>
+                </Border>
+            </Grid>
+            <TextBlock x:Name="ProfileSummary" TextWrapping="Wrap" Style="{StaticResource CaptionSecondaryStyle}" />
+            <InfoBar x:Name="CoreWarning" IsClosable="False" Severity="Warning" Title="Core removes safety nets"
+                     Message="No Windows Update, no Defender, no recovery environment and no way to add features or languages later. Choose it only for a throwaway or offline device." />
 
+            <TextBlock Text="Your account" Style="{StaticResource SectionHeaderStyle}" />
             <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="12">
-                    <TextBlock Text="Your Windows account" Style="{StaticResource SubtitleTextBlockStyle}" />
-                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="The installer finishes setup automatically and signs you in to a local administrator account with these details. You can add a Microsoft account later in Windows." />
-                    <Grid ColumnSpacing="8">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
@@ -60,11 +74,10 @@
                         <TextBox x:Name="AccountName" Header="User name" Text="S9" TextChanged="OnAccountChanged" />
                         <PasswordBox x:Name="AccountPassword" Grid.Column="1" Header="Password (optional)" PasswordChanged="OnAccountChanged" />
                     </Grid>
+                    <TextBlock Style="{StaticResource CaptionSecondaryStyle}"
+                               Text="Windows setup finishes on its own and signs you in to this local administrator account. You can add a Microsoft account later." />
                 </StackPanel>
             </Border>
-
-            <Button x:Name="ContinueButton" Content="Continue" Style="{StaticResource AccentButtonStyle}"
-                    IsEnabled="False" Click="OnContinue" MinWidth="140" />
         </StackPanel>
     </ScrollViewer>
 </Page>

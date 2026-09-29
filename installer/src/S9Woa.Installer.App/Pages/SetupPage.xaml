@@ -4,11 +4,11 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer Style="{StaticResource PageRootStyle}">
-        <StackPanel Spacing="16" MaxWidth="880" HorizontalAlignment="Left">
+        <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
                 <TextBlock Text="Set up this PC" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}"
-                           Text="The installer needs a few programs, a USB driver and the phone's boot files. It installs everything it can by itself and remembers your choices, so this only happens once." />
+                <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,8"
+                           Text="A few programs, a USB driver and the phone's boot files. The installer fetches everything it can and remembers your choices, so this only happens once." />
             </StackPanel>
 
             <InfoBar x:Name="WingetBar" IsClosable="False" Severity="Warning" Title="winget is not available"
@@ -40,17 +40,17 @@
                 </ItemsControl.ItemContainerTransitions>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Style="{StaticResource CardStyle}" Margin="0,0,0,8" Padding="16">
-                            <Grid ColumnSpacing="14">
+                        <Border Style="{StaticResource CardStyle}" Margin="0,0,0,4" Padding="18,14">
+                            <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Grid VerticalAlignment="Top" Margin="0,2,0,0" Width="20">
-                                    <FontIcon Glyph="{Binding Glyph}" Foreground="{Binding Brush}" FontSize="18" />
-                                    <ProgressRing IsActive="{Binding Busy}" Width="18" Height="18" />
+                                    <FontIcon Glyph="{Binding Glyph}" Foreground="{Binding Brush}" FontSize="16" />
+                                    <ProgressRing IsActive="{Binding Busy}" Width="16" Height="16" />
                                 </Grid>
-                                <StackPanel Grid.Column="1" Spacing="4">
+                                <StackPanel Grid.Column="1" Spacing="3">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <TextBlock Text="{Binding Name}" Style="{StaticResource BodyStrongTextBlockStyle}" />
                                         <Border CornerRadius="4" Padding="6,1" Background="{ThemeResource SubtleFillColorSecondaryBrush}" Visibility="{Binding BadgeVisibility}">
@@ -58,7 +58,8 @@
                                         </Border>
                                     </StackPanel>
                                     <TextBlock Text="{Binding Purpose}" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" IsTextSelectionEnabled="True" />
+                                    <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" IsTextSelectionEnabled="True" />
                                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
                                         <Button Content="Install" Tag="{Binding Id}" Click="OnWinget" Visibility="{Binding WingetVisibility}" IsEnabled="{Binding ActionsEnabled}" />
                                         <Button Content="Open download page" Tag="{Binding Id}" Click="OnOpenPage" Visibility="{Binding OpenPageVisibility}" IsEnabled="{Binding ActionsEnabled}" />
@@ -85,10 +86,7 @@
 
             <InfoBar x:Name="ResultBar" IsClosable="True" />
 
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button x:Name="FinishButton" Style="{StaticResource AccentButtonStyle}" Click="OnFinish" MinWidth="160" IsEnabled="False" Content="Finish setup" />
-                <Button Content="Check again" Click="OnRecheck" />
-            </StackPanel>
+            <HyperlinkButton Content="Check again" Click="OnRecheck" Padding="0" />
         </StackPanel>
     </ScrollViewer>
 </Page>

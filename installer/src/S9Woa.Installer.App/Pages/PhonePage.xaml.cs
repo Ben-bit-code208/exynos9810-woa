@@ -8,10 +8,11 @@ using S9Woa.Installer.Core.Stages;
 
 namespace S9Woa.Installer.App.Pages;
 
-public sealed partial class PhonePage : Page
+public sealed partial class PhonePage : Page, IWizardStep
 {
     private readonly DispatcherQueueTimer _timer;
     private bool _polling;
+    private bool _ready;
     private string? _lastKey;
 
     public PhonePage()
@@ -22,6 +23,31 @@ public sealed partial class PhonePage : Page
         _timer.Tick += async (_, _) => await PollAsync();
         Loaded += async (_, _) => { _timer.Start(); await PollAsync(); };
         Unloaded += (_, _) => _timer.Stop();
+    }
+
+    public event EventHandler? StateChanged;
+
+    public bool CanAdvance => _ready;
+
+    private void SetReady(bool ready)
+    {
+        if (_ready != ready)
+        {
+            _ready = ready;
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void ShowSearching(string title, string detail)
+    {
+        SearchRing.IsActive = true;
+        DeviceIcon.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
+        DeviceTitle.Text = title;
+        DeviceDetail.Text = detail;
+        RebootMenu.Visibility = Visibility.Collapsed;
+        ChecksCard.Visibility = Visibility.Collapsed;
+        StatusBar.IsOpen = false;
+        SetReady(false);
     }
 
     private async Task PollAsync()
@@ -35,22 +61,19 @@ public sealed partial class PhonePage : Page
         {
             if (AppServices.Adb is null)
             {
-                Show(InfoBarSeverity.Error, "adb.exe not found", "Install Android platform tools on the This PC page.");
+                ShowSearching("adb isn't set up", "Go back to Set up and install the Android platform tools.");
                 return;
             }
             var devices = await AppServices.Adb.ListDevicesAsync();
             if (devices.Count == 0)
             {
                 AppServices.CurrentDevice = null;
-                DeviceCard.Visibility = Visibility.Collapsed;
-                ContinueButton.IsEnabled = false;
-                Show(InfoBarSeverity.Informational, "Looking for a phone…", "Connect the phone with USB debugging enabled.");
+                ShowSearching("Looking for your phone…", "Connect it with USB debugging turned on.");
                 return;
             }
             if (devices.Count > 1)
             {
-                Show(InfoBarSeverity.Warning, "More than one Android device", "Disconnect every device except the phone you want to install Windows on.");
-                ContinueButton.IsEnabled = false;
+                ShowSearching("More than one Android device", "Disconnect everything except the phone you want to install Windows on.");
                 return;
             }
 
@@ -69,26 +92,35 @@ public sealed partial class PhonePage : Page
                 AppServices.Log($"device {snap.Mode} model={snap.Model} bl={snap.Bootloader} locked={snap.FlashLocked}");
             }
 
-            DeviceCard.Visibility = Visibility.Visible;
-            DeviceTitle.Text = snap.Model is null ? "Android device" : $"Samsung {snap.Model}";
+            SearchRing.IsActive = false;
+            DeviceIcon.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
+            DeviceTitle.Text = snap.Model switch
+            {
+                null => "Android device",
+                var m when m.Contains("G965", StringComparison.OrdinalIgnoreCase) => $"Galaxy S9+ · {m}",
+                var m => m,
+            };
             DeviceDetail.Text = snap.Mode switch
             {
                 DeviceMode.Recovery => $"In TWRP {snap.RecoveryVersion} · firmware {snap.Bootloader ?? "unknown"}",
                 DeviceMode.Android => $"Android {snap.AndroidVersion} · firmware {snap.Bootloader ?? "unknown"}",
+                DeviceMode.Unauthorized => "Waiting for you to tap Allow on the phone",
                 _ => snap.Mode.ToString(),
             };
+            RebootMenu.Visibility = snap.Mode is DeviceMode.Android or DeviceMode.Recovery ? Visibility.Visible : Visibility.Collapsed;
             Results.ItemsSource = results.Select(r => new CheckItem(r)).ToList();
+            ChecksCard.Visibility = Visibility.Visible;
 
             var blocked = results.HasBlockers();
-            ContinueButton.IsEnabled = !blocked;
             if (blocked)
             {
                 Show(InfoBarSeverity.Error, "This phone can't be used yet", "Resolve the items marked in red below.");
             }
             else
             {
-                Show(InfoBarSeverity.Success, "Phone ready", "Your phone passed the compatibility checks.");
+                StatusBar.IsOpen = false;
             }
+            SetReady(!blocked);
             AppServices.State.Set("identify", blocked ? StageStatus.Failed : StageStatus.Done);
             if (snap.FlashLocked == false)
             {
@@ -98,7 +130,7 @@ public sealed partial class PhonePage : Page
         }
         catch (Exception e)
         {
-            Show(InfoBarSeverity.Warning, "Couldn't talk to the phone", e.Message);
+            ShowSearching("Couldn't talk to the phone", e.Message);
         }
         finally
         {
@@ -111,6 +143,7 @@ public sealed partial class PhonePage : Page
         StatusBar.Severity = severity;
         StatusBar.Title = title;
         StatusBar.Message = message;
+        StatusBar.IsOpen = true;
     }
 
     private Task RebootAsync(RebootTarget target) => DeviceCommands.RebootAsync(XamlRoot, target);
@@ -120,6 +153,4 @@ public sealed partial class PhonePage : Page
     private async void OnRebootDownload(object sender, RoutedEventArgs e) => await RebootAsync(RebootTarget.Download);
 
     private async void OnRebootSystem(object sender, RoutedEventArgs e) => await RebootAsync(RebootTarget.System);
-
-    private void OnContinue(object sender, RoutedEventArgs e) => App.Window?.NavigateTo("image");
 }
