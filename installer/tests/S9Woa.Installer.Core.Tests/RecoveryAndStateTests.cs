@@ -45,6 +45,8 @@ public class RecoveryAndStateTests
         public Architecture OsArchitecture { get; init; } = Architecture.X64;
         public long Free { get; init; } = 200L << 30;
         public long FreeBytes(string path) => Free;
+        public long Used { get; init; }
+        public long UsedBytes(string directory) => Used;
         public string? AdbPath { get; init; } = @"C:\adb.exe";
         public bool UsbDriver { get; init; } = true;
         public bool ServiceExists(string name) => UsbDriver;
@@ -56,6 +58,9 @@ public class RecoveryAndStateTests
         Assert.False(HostPreflight.Evaluate(new FakeHost(), @"C:\w").HasBlockers());
         Assert.True(HostPreflight.Evaluate(new FakeHost { IsAdministrator = false }, @"C:\w").HasBlockers());
         Assert.True(HostPreflight.Evaluate(new FakeHost { Free = 10L << 30 }, @"C:\w").HasBlockers());
+        // A previous build's 53 GB image in the work folder is replaced or reused, so it counts as available.
+        Assert.False(HostPreflight.Evaluate(new FakeHost { Free = 60L << 30, Used = 53L << 30 }, @"C:\w").HasBlockers());
+        Assert.True(HostPreflight.Evaluate(new FakeHost { Free = 20L << 30, Used = 53L << 30 }, @"C:\w").HasBlockers());
         Assert.True(HostPreflight.Evaluate(new FakeHost { AdbPath = null }, @"C:\w").HasBlockers());
         Assert.True(HostPreflight.Evaluate(new FakeHost { OsArchitecture = Architecture.X86 }, @"C:\w").HasBlockers());
         var usb = HostPreflight.Evaluate(new FakeHost { UsbDriver = false }, @"C:\w");

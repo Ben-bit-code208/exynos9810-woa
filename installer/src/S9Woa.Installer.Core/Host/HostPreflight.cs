@@ -10,6 +10,9 @@ public interface IHostEnvironment
     Version OsVersion { get; }
     Architecture OsArchitecture { get; }
     long FreeBytes(string path);
+
+    /// <summary>Bytes of files under <paramref name="directory"/> (0 if it does not exist).</summary>
+    long UsedBytes(string directory);
     string? AdbPath { get; }
     bool ServiceExists(string name);
 }
@@ -28,6 +31,12 @@ public sealed class LocalHostEnvironment(string? adbPath) : IHostEnvironment
     public Version OsVersion => Environment.OSVersion.Version;
     public Architecture OsArchitecture => RuntimeInformation.OSArchitecture;
     public long FreeBytes(string path) => new DriveInfo(Path.GetPathRoot(Path.GetFullPath(path))!).AvailableFreeSpace;
+
+    public long UsedBytes(string directory) => Directory.Exists(directory)
+        ? new DirectoryInfo(directory).EnumerateFiles("*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true })
+            .Sum(f => f.Length)
+        : 0;
+
     public string? AdbPath => adbPath;
 
     public bool ServiceExists(string name) =>
@@ -46,6 +55,10 @@ public static class HostPreflight
     public const int MinimumBuild = 19041;
     public const string SamsungUsbService = "dg_ssudbus";
 
+    /// <param name="workDirectory">
+    /// Where the image is built. Files already in it (a previous build that is reused or replaced)
+    /// count toward the space requirement.
+    /// </param>
     public static IReadOnlyList<CheckResult> Evaluate(IHostEnvironment host, string workDirectory)
     {
         var r = new List<CheckResult>
@@ -62,16 +75,20 @@ public static class HostPreflight
         };
 
         long free;
+        long reusable = 0;
         try
         {
             free = host.FreeBytes(workDirectory);
+            reusable = host.UsedBytes(workDirectory);
         }
         catch (Exception e) when (e is IOException or ArgumentException or UnauthorizedAccessException)
         {
             free = -1;
         }
-        r.Add(free >= RequiredFreeBytes
-            ? new("disk", "Free space", CheckSeverity.Pass, $"{free / (1L << 30)} GB free at {workDirectory}.")
+        r.Add(free >= 0 && free + reusable >= RequiredFreeBytes
+            ? new("disk", "Free space", CheckSeverity.Pass, reusable >= 1L << 30
+                ? $"{free / (1L << 30)} GB free at {workDirectory}, plus {reusable / (1L << 30)} GB used by the previous image build."
+                : $"{free / (1L << 30)} GB free at {workDirectory}.")
             : new("disk", "Free space", CheckSeverity.Blocker,
                 $"{RequiredFreeBytes >> 30} GB free is needed at {workDirectory} for the image and phone backups."));
 

@@ -228,8 +228,16 @@ public sealed partial class InstallPage : Page, IWizardStep
             return (false, "TWRP is not set up. Add it on the Set up page, then press Resume.");
         }
         var resolved = await AppServices.TwrpFlasher.ResolveAsync(ct);
+        if (resolved is null && AppServices.Device is not null && await RefreshDeviceAsync(ct) is { Mode: DeviceMode.Recovery })
+        {
+            // adb only runs in TWRP (stock recovery offers sideload at most), so it is already installed.
+            log.Report("The phone is already in TWRP.");
+            return await SettleTwrpAsync(log, ct)
+                ? (true, "TWRP is running.")
+                : (false, "TWRP started but its connection is not settled yet. Wait a minute, then press Resume.");
+        }
         if (resolved is null && AppServices.Device is not null
-            && await RefreshDeviceAsync(ct) is { Mode: DeviceMode.Android or DeviceMode.Recovery } phone)
+            && await RefreshDeviceAsync(ct) is { Mode: DeviceMode.Android } phone)
         {
             log.Report("Restarting the phone into Download mode...");
             await AppServices.Device.RebootAsync(phone.Serial, RebootTarget.Download, ct);

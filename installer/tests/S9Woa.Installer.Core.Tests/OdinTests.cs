@@ -31,7 +31,7 @@ public class OdinTests
         ("SYSTEM", 18, 0, "system.img"), ("USERDATA", 25, 0, "userdata.img"));
 
     /// <summary>Simulates a Samsung bootloader in Download mode.</summary>
-    private sealed class FakePhone(short version, byte[] pit, int failEndCode = 0) : IOdinTransport
+    private sealed class FakePhone(short version, byte[] pit, int failEndCode = 0, bool refuseEndSession = false) : IOdinTransport
     {
         private readonly Queue<byte> _out = new();
         private int _partsLeft;
@@ -88,9 +88,12 @@ public class OdinTests
                     break;
                 case (0x65, 0x03):
                 case (0x66, 0x00):
-                case (0x67, 0x00):
                 case (0x67, 0x01):
                     Respond(type, 0);
+                    break;
+                case (0x67, 0x00):
+                    // The SM-G965F (G965FXXUHFVG4) refuses the closing handshake with -1 after a good flash.
+                    Respond(refuseEndSession ? unchecked((int)0xFFFFFFFF) : type, refuseEndSession ? -1 : 0);
                     break;
                 case (0x66, 0x02):
                     _partsLeft = arg / (FilePartSize ?? 128 * 1024);
@@ -205,6 +208,22 @@ public class OdinTests
             Assert.Equal("67/00", phone.Commands[^1]);
             Assert.DoesNotContain("67/01", phone.Commands);
             Assert.Contains(log, l => l.Contains("100%", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
+    public void ARefusedEndSessionMeansTheImageWasRejected()
+    {
+        var phone = new FakePhone(3, PhonePit, refuseEndSession: true);
+        var image = WriteImage(3 * 1024 * 1024);
+        try
+        {
+            var e = Assert.Throws<OdinException>(() => Flasher(phone).Flash("COM4", image, null));
+            Assert.Contains("Only official released binaries", e.Message, StringComparison.Ordinal);
         }
         finally
         {

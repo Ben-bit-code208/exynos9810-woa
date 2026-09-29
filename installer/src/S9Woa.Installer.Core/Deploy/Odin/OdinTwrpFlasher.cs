@@ -159,7 +159,17 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
                 log?.Report($"  {decile * 10}%");
             }
         });
-        odin.EndSession();
+        try
+        {
+            odin.EndSession();
+        }
+        catch (OdinException e)
+        {
+            // Observed on the SM-G965F: every part is acknowledged, then the closing handshake fails
+            // with -1 while the screen shows "Only official released binaries are allowed to be
+            // flashed (RECOVERY)". The image was not accepted.
+            throw new OdinException($"The phone refused TWRP when the session ended ({e.Message}). {OdinSession.OfficialBinariesOnlyHelp}");
+        }
         log?.Report("TWRP flashed. The phone stays in Download mode until you restart it.");
     }
 }

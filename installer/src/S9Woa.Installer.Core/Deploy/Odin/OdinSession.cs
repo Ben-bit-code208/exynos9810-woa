@@ -210,10 +210,13 @@ public sealed class OdinSession
         return reply;
     }
 
+    internal const string OfficialBinariesOnlyHelp =
+        "If the phone shows \"Only official released binaries are allowed to be flashed\", its KG/RMM state blocks custom images: "
+        + "boot Android, connect to the internet, make sure Developer options > OEM unlocking is on, then try again.";
+
     internal static string Describe(int code, bool isWrite) => (code, isWrite) switch
     {
-        (-5, true) => "the phone refused the image (authentication). If it shows \"Only official released binaries are allowed\", "
-            + "its KG/RMM state blocks custom images: boot Android, connect to the internet, check that OEM unlocking is on, and try again.",
+        (-5, true) => $"the phone refused the image (authentication). {OfficialBinariesOnlyHelp}",
         (-7, true) => "ext4 error (code -7).",
         (-6, true) => "the image does not fit the partition (code -6).",
         (-4, true) => "writing to storage failed (code -4).",
