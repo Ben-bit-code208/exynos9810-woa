@@ -67,7 +67,21 @@ internal static class AppServices
 
     public static TwrpClient? Twrp(string serial) => AdbPath is null ? null : new TwrpClient(AdbPath, serial, Runner);
 
-    public static DeviceSnapshot? CurrentDevice { get; set; }
+    private static DeviceSnapshot? _currentDevice;
+
+    /// <summary>The phone last identified on the phone page; raises <see cref="CurrentDeviceChanged"/>.</summary>
+    public static DeviceSnapshot? CurrentDevice
+    {
+        get => _currentDevice;
+        set
+        {
+            _currentDevice = value;
+            CurrentDeviceChanged?.Invoke();
+        }
+    }
+
+    public static event Action? CurrentDeviceChanged;
+
     public static bool RisksAccepted { get; set; }
 
     /// <summary>Opt-in to run stages that are automated but not yet validated on the reference device.</summary>

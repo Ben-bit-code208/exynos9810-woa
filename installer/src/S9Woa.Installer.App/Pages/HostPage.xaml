@@ -7,7 +7,7 @@
         <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
                 <TextBlock Text="Check this PC" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,8"
+                <TextBlock Style="{StaticResource PageSubtitleStyle}"
                            Text="The Windows image is built here, so the installer needs administrator rights, room for the image and your phone's backup, and the phone tools." />
             </StackPanel>
 
@@ -29,7 +29,7 @@
                 </Grid>
             </Border>
 
-            <Border Style="{StaticResource CardStyle}" Padding="20,6">
+            <Border Style="{StaticResource CardStyle}" Padding="28,8">
                 <ItemsControl x:Name="Results" ItemTemplate="{StaticResource CheckItemTemplate}" />
             </Border>
 

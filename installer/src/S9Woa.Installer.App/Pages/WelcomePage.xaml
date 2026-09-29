@@ -5,15 +5,15 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer Style="{StaticResource PageRootStyle}">
         <StackPanel Style="{StaticResource PageColumnStyle}" Spacing="0">
-            <Border Width="64" Height="64" CornerRadius="16" HorizontalAlignment="Left" Margin="0,8,0,28"
+            <Border Width="64" Height="64" CornerRadius="16" HorizontalAlignment="Left" Margin="0,8,0,32"
                     Background="{ThemeResource AccentFillColorDefaultBrush}">
                 <FontIcon Glyph="&#xE8EA;" FontSize="30" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
             </Border>
             <TextBlock Text="Windows on your Galaxy S9+" Style="{StaticResource TitleLargeTextBlockStyle}" TextWrapping="Wrap" Margin="0,0,0,12" />
-            <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,36"
+            <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,40"
                        Text="This installer takes an Exynos Galaxy S9+ (SM-G965F) from stock Android to Windows 11 on ARM, with open-source firmware and drivers. It walks you through every step and checks each one before moving on." />
 
-            <Grid ColumnSpacing="12" Margin="0,0,0,28">
+            <Grid ColumnSpacing="16" Margin="0,0,0,32">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -42,7 +42,7 @@
                 </Border>
             </Grid>
 
-            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,20">
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,28">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />

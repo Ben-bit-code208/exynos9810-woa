@@ -7,7 +7,7 @@
         <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
                 <TextBlock Text="Set up this PC" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,8"
+                <TextBlock Style="{StaticResource PageSubtitleStyle}"
                            Text="A few programs, a USB driver and the phone's boot files. The installer fetches everything it can and remembers your choices, so this only happens once." />
             </StackPanel>
 
@@ -40,7 +40,7 @@
                 </ItemsControl.ItemContainerTransitions>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Style="{StaticResource CardStyle}" Margin="0,0,0,4" Padding="18,14">
+                        <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12" Padding="24,20">
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />

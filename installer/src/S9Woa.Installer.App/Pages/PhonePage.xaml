@@ -7,11 +7,11 @@
         <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
                 <TextBlock Text="Connect your phone" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,8"
+                <TextBlock Style="{StaticResource PageSubtitleStyle}"
                            Text="Turn on USB debugging, plug the phone into this PC and tap Allow when it asks. The installer checks it's a supported model and firmware." />
             </StackPanel>
 
-            <Border Style="{StaticResource CardStyle}" Padding="24,22">
+            <Border Style="{StaticResource CardStyle}">
                 <Grid ColumnSpacing="20">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -49,7 +49,7 @@
 
             <InfoBar x:Name="StatusBar" IsClosable="False" />
 
-            <Border x:Name="ChecksCard" Style="{StaticResource CardStyle}" Padding="20,6" Visibility="Collapsed">
+            <Border x:Name="ChecksCard" Style="{StaticResource CardStyle}" Padding="28,8" Visibility="Collapsed">
                 <ItemsControl x:Name="Results" ItemTemplate="{StaticResource CheckItemTemplate}" />
             </Border>
 

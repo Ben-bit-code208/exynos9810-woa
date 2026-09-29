@@ -34,9 +34,11 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico"));
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(1180, 800));
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 860));
         _steps[^1].IsLast = true;
         StepList.ItemsSource = _steps;
+        AppServices.CurrentDeviceChanged += () => DispatcherQueue.TryEnqueue(UpdatePhoneCard);
+        UpdatePhoneCard();
 #if DEBUG
         // UI development only: reach every step without completing the earlier ones.
         if (Environment.GetCommandLineArgs().Contains("--unlock-all-steps"))
@@ -183,6 +185,20 @@ public sealed partial class MainWindow : Window
         {
             GoTo(index);
         }
+    }
+
+    private void UpdatePhoneCard()
+    {
+        if (AppServices.CurrentDevice is not { } d)
+        {
+            PhoneTitle.Text = "No phone yet";
+            PhoneDetail.Text = "Connected on step 4";
+            PhoneGlyph.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorTertiaryBrush"];
+            return;
+        }
+        PhoneTitle.Text = d.Model is { } m && m.Contains("G965", StringComparison.OrdinalIgnoreCase) ? "Galaxy S9+" : d.Model ?? "Phone";
+        PhoneDetail.Text = string.Join(" · ", new[] { d.Model, d.Bootloader }.Where(s => !string.IsNullOrEmpty(s)));
+        PhoneGlyph.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["AccentTextFillColorPrimaryBrush"];
     }
 
     private void OnTools(object sender, RoutedEventArgs e) => ShowSidePage(typeof(ToolsPage));

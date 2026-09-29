@@ -7,7 +7,7 @@
         <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
                 <TextBlock x:Name="HeadlineText" Text="Ready to install" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock x:Name="LeadText" Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,8"
+                <TextBlock x:Name="LeadText" Style="{StaticResource PageSubtitleStyle}"
                            Text="Review your choices, then press Install. Slow work on this PC happens first; the phone is only written after it's been backed up." />
             </StackPanel>
 
@@ -67,11 +67,11 @@
             <InfoBar x:Name="ResultBar" IsClosable="True" />
 
             <TextBlock Text="Steps" Style="{StaticResource SectionHeaderStyle}" />
-            <Border Style="{StaticResource CardStyle}" Padding="8,6">
+            <Border Style="{StaticResource CardStyle}" Padding="12,10">
                 <ItemsControl x:Name="Timeline">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Grid Padding="12,10" ColumnSpacing="14">
+                            <Grid Padding="16,14" ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="20" />
                                     <ColumnDefinition Width="*" />

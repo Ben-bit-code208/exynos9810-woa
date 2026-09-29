@@ -7,7 +7,7 @@
         <StackPanel Style="{StaticResource PageColumnStyle}">
             <StackPanel>
                 <TextBlock Text="Choose your Windows" Style="{StaticResource PageTitleStyle}" />
-                <TextBlock Style="{StaticResource PageSubtitleStyle}" Margin="0,0,0,8"
+                <TextBlock Style="{StaticResource PageSubtitleStyle}"
                            Text="Pick the Windows 11 ARM64 media, how lean the installed system should be, and the account you'll sign in with." />
             </StackPanel>
 
@@ -28,13 +28,13 @@
             </Border>
 
             <TextBlock Text="Image size" Style="{StaticResource SectionHeaderStyle}" />
-            <Grid ColumnSpacing="8">
+            <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border x:Name="StockCard" Style="{StaticResource CardStyle}" Padding="14,12">
+                <Border x:Name="StockCard" Style="{StaticResource CardStyle}" Padding="18,16">
                     <RadioButton x:Name="StockOption" GroupName="Profile" Tag="None" Checked="OnProfileChecked" VerticalAlignment="Top" VerticalContentAlignment="Top">
                         <StackPanel Spacing="2">
                             <TextBlock Text="Stock" Style="{StaticResource BodyStrongTextBlockStyle}" />
@@ -42,7 +42,7 @@
                         </StackPanel>
                     </RadioButton>
                 </Border>
-                <Border x:Name="LiteCard" Grid.Column="1" Style="{StaticResource CardStyle}" Padding="14,12">
+                <Border x:Name="LiteCard" Grid.Column="1" Style="{StaticResource CardStyle}" Padding="18,16">
                     <RadioButton x:Name="LiteOption" GroupName="Profile" Tag="Lite" Checked="OnProfileChecked" VerticalAlignment="Top" VerticalContentAlignment="Top">
                         <StackPanel Spacing="2">
                             <TextBlock Text="Lite" Style="{StaticResource BodyStrongTextBlockStyle}" />
@@ -50,7 +50,7 @@
                         </StackPanel>
                     </RadioButton>
                 </Border>
-                <Border x:Name="CoreCard" Grid.Column="2" Style="{StaticResource CardStyle}" Padding="14,12">
+                <Border x:Name="CoreCard" Grid.Column="2" Style="{StaticResource CardStyle}" Padding="18,16">
                     <RadioButton x:Name="CoreOption" GroupName="Profile" Tag="Core" Checked="OnProfileChecked" VerticalAlignment="Top" VerticalContentAlignment="Top">
                         <StackPanel Spacing="2">
                             <TextBlock Text="Core" Style="{StaticResource BodyStrongTextBlockStyle}" />
