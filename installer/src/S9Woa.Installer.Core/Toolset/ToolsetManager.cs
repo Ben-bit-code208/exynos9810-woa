@@ -427,6 +427,12 @@ public sealed class ToolsetManager
         {
             throw new DirectoryNotFoundException(folder);
         }
+        var root = ResolveBuildRoot(folder);
+        if (!string.Equals(root, folder, StringComparison.OrdinalIgnoreCase))
+        {
+            log?.Report($"Using {root}, the build folder that contains {folder}.");
+            folder = root;
+        }
         var results = new Dictionary<string, ToolStatus>();
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true };
 
@@ -522,6 +528,28 @@ public sealed class ToolsetManager
         SaveConfig();
         return results;
     }
+
+    /// <summary>
+    /// The folder to import from. Picking a subfolder of the build folder (e.g. its <c>drivers</c>
+    /// folder from the drivers row) would miss the firmware beside it, so a folder without any UEFI
+    /// image falls back to its parent when the parent has one.
+    /// </summary>
+    internal static string ResolveBuildRoot(string folder)
+    {
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
+        if (HasFirmware(full))
+        {
+            return full;
+        }
+        var parent = Directory.GetParent(full)?.FullName;
+        return parent is not null && HasFirmware(parent) ? parent : full;
+    }
+
+    private static bool HasFirmware(string folder) =>
+        Directory.EnumerateFiles(folder, "*", new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 2, IgnoreInaccessible = true })
+            .Select(Path.GetFileName)
+            .Any(n => n is not null && (n.Equals(FirmwareCatalog.FileName, StringComparison.OrdinalIgnoreCase)
+                || (n.Contains("uefi", StringComparison.OrdinalIgnoreCase) && n.EndsWith(".img", StringComparison.OrdinalIgnoreCase))));
 
     private static void CopyDirectory(string source, string destination)
     {

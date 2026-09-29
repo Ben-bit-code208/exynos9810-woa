@@ -394,6 +394,14 @@ public sealed class ToolsetTests : IDisposable
         Assert.Equal(ToolState.Ready, r[Tools.Drivers].State);
         Assert.Equal(2, ToolsetManager.BuiltDriverPackages(m.DriversPayload).Count);
         Assert.Equal(build, ToolsetConfig.Load(m.Paths.DataDirectory).BuildFolder);
+
+        // Picking the drivers subfolder (the drivers row's natural choice) still finds the firmware beside it.
+        var fresh = Manager();
+        var r2 = fresh.UseBuildFolder(Path.Combine(build, "out"));
+        Assert.Equal(ToolState.Ready, r2[Tools.Uefi].State);
+        Assert.Equal(ToolState.Ready, r2[Tools.Drivers].State);
+        Assert.Equal(build, ToolsetConfig.Load(fresh.Paths.DataDirectory).BuildFolder);
+        Assert.Equal(build, ToolsetManager.ResolveBuildRoot(build + Path.DirectorySeparatorChar));
     }
 
     [Fact]
