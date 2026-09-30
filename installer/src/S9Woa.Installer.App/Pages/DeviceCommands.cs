@@ -39,7 +39,7 @@ internal static class DeviceCommands
         {
             XamlRoot = root,
             Title = title,
-            Content = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap },
+            Content = new TextBlock { Text = AppServices.Redact(text), TextWrapping = TextWrapping.Wrap },
             CloseButtonText = "OK",
             DefaultButton = ContentDialogButton.Close,
         };

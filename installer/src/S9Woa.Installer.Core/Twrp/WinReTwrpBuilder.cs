@@ -19,28 +19,45 @@ public enum BaseImageKind
 }
 
 /// <summary>The result of a successful build.</summary>
-public sealed record WinReBuildResult(byte[] Image, string Sha256, string BuilderVersion, string BaseSha256)
+/// <param name="Gears"><c>builtin</c>, or <c>sha256:&lt;hex&gt;</c> of the user's gear GIF the frames came from.</param>
+public sealed record WinReBuildResult(byte[] Image, string Sha256, string BuilderVersion, string BaseSha256, string Gears = WinReTwrpBuilder.BuiltinGears)
 {
     public int Bytes => Image.Length;
 }
 
+/// <summary>The <c>twres/winre-build.txt</c> stamp a build of this installer leaves in its ramdisk.</summary>
+public sealed record WinReStamp(string Builder, string BaseSha256, string Gears);
+
 /// <summary>
 /// Builds the WinRE-look recovery on the end user's PC from the official TWRP
 /// image: it verifies the base is exactly TWRP 3.7.0_9-0 for star2lte, applies
-/// the four-byte power-off route patch to the kernel, replaces and extends the
-/// theme with the embedded WinRE pages, procedural art and Segoe fonts copied
-/// from the user's own Windows, bakes in the /sbin scripts and the two GPL
+/// the four-byte power-off route patch to the kernel, reskins the stock theme with
+/// the committed reskin.xml, replaces every stock bitmap with the original art in
+/// assets/stock, adds the embedded WinRE pages, icons and gears (or, when the user
+/// supplies their own UpdateOS gear GIF, frames rendered from it) and Segoe fonts
+/// copied from the user's own Windows, bakes in the /sbin scripts and the GPL
 /// kernel modules, patches init.recovery.usb.rc so adb survives a TWRP crash,
+/// registers the ntfs-3g FUSE deadlock breaker as an init service,
 /// writes a builder marker, and repacks. It asserts the output fits RECOVERY and
 /// that the kernel (bar the patch), device-tree and second stage are unchanged.
-/// Deterministic: the same base image and fonts produce the same bytes.
+/// Deterministic: the same base image, fonts and GIF produce the same bytes.
 ///
 /// This is the C# counterpart of tools/twrp-winre/build.py and shares the same
 /// committed theme, scripts and art.
 /// </summary>
 public sealed class WinReTwrpBuilder
 {
-    public const string BuilderVersion = "winre-1";
+    /// <summary>
+    /// winre-2: live-progress install screen, reskin.xml templates/styles, original
+    /// replacements for every stock bitmap, WinRE singleaction/action pages.
+    /// </summary>
+    public const string BuilderVersion = "winre-2";
+
+    /// <summary>Marker value for the procedural gears committed with the theme.</summary>
+    public const string BuiltinGears = "builtin";
+
+    /// <summary>The marker value for frames rendered from this GIF.</summary>
+    public static string GearsId(byte[]? gif) => gif is null ? BuiltinGears : "sha256:" + Sha256(gif);
 
     /// <summary>SHA-256 of the official twrp-3.7.0_9-0-star2lte.img from twrp.me.</summary>
     public const string OfficialTwrpSha256 = "f674dab0134f3c929982077b6a3a8de7df209a45c76ead80bc009381bcd835e1";
@@ -88,6 +105,34 @@ public sealed class WinReTwrpBuilder
         return BaseImageKind.Unknown;
     }
 
+    /// <summary>
+    /// The build stamp of a WinRE image built by this installer (any version), or null for anything
+    /// else - e.g. the research tool's builds, which carry no stamp.
+    /// </summary>
+    public static WinReStamp? ReadStamp(byte[] image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        try
+        {
+            var cpio = CpioArchive.Parse(Lzma.LzmaAlone.Decompress(AndroidBootImage.Parse(image).Ramdisk));
+            if (cpio.Get("twres/winre-build.txt") is not { } entry)
+            {
+                return null;
+            }
+            var fields = Encoding.UTF8.GetString(entry.Data).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Split('=', 2))
+                .Where(p => p.Length == 2)
+                .ToDictionary(p => p[0].Trim(), p => p[1].Trim(), StringComparer.Ordinal);
+            return fields.TryGetValue("builder", out var builder) && builder.Length > 0
+                ? new WinReStamp(builder, fields.GetValueOrDefault("base_sha256", ""), fields.GetValueOrDefault("gears", ""))
+                : null;
+        }
+        catch (Exception e) when (e is InvalidDataException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     public static bool MatchesOfficial(byte[] image)
     {
         ArgumentNullException.ThrowIfNull(image);
@@ -111,10 +156,12 @@ public sealed class WinReTwrpBuilder
     /// <summary>
     /// Build the WinRE recovery image. <paramref name="fontsDirectory"/> defaults
     /// to the user's Windows fonts; <paramref name="modulesDirectory"/> overrides
-    /// the embedded kernel modules if supplied (else the embedded ones are used).
+    /// the embedded kernel modules if supplied (else the embedded ones are used);
+    /// <paramref name="gearsGif"/> is the user's own UpdateOS gear animation, whose
+    /// frames then replace the procedural gears (never stored anywhere else).
     /// </summary>
     public WinReBuildResult Build(byte[] baseImage, string? fontsDirectory = null, string? modulesDirectory = null,
-        IList<string>? report = null)
+        IList<string>? report = null, byte[]? gearsGif = null)
     {
         ArgumentNullException.ThrowIfNull(baseImage);
         var baseSha = Sha256(baseImage);
@@ -157,8 +204,38 @@ public sealed class WinReTwrpBuilder
             throw new InvalidOperationException("No twres/ui.xml in the ramdisk.");
         }
 
-        var vars = WinReTheme.BuildVariables();
+        // Gears: the user's UpdateOS GIF if given, else the committed procedural frames.
+        IReadOnlyList<byte[]> gearFrames;
+        int gearFps;
+        if (gearsGif is not null)
+        {
+            GearFrames.Result gears;
+            try
+            {
+                gears = GearFrames.FromGif(gearsGif);
+            }
+            catch (InvalidDataException e)
+            {
+                throw new InvalidOperationException($"The gear animation could not be read: {e.Message}", e);
+            }
+            gearFrames = gears.Pngs;
+            gearFps = gears.Fps;
+            report?.Add($"gears: {gearFrames.Count} frame(s) from your UpdateOS GIF ({gears.MeanDelayMs:0} ms/frame, fps {gearFps})");
+        }
+        else
+        {
+            gearFrames = WinReResources.Folder("images")
+                .Where(kv => kv.Key.StartsWith("winrecog", StringComparison.Ordinal))
+                .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                .Select(kv => kv.Value)
+                .ToList();
+            gearFps = 24;
+            report?.Add($"gears: {gearFrames.Count} built-in frame(s)");
+        }
+
+        var vars = WinReTheme.BuildVariables(gearFps);
         var icons = WinReResources.IconNames();
+        var reskin = WinReResources.ThemeText("reskin.xml");
         var ui = Text(cpio.Get($"{twres}/ui.xml")!);
         var portrait = Text(cpio.Get($"{twres}/portrait.xml")!);
         if (cpio.Get($"{twres}/splash.xml") is null)
@@ -166,24 +243,29 @@ public sealed class WinReTwrpBuilder
             throw new InvalidOperationException("No twres/splash.xml in the ramdisk.");
         }
 
-        var uiNew = WinReTheme.PatchUiXml(ui, vars, icons);
-        var (portraitNew, refs) = WinReTheme.PatchPortraitXml(portrait);
         var winre = WinReResources.ThemeText("winre.xml");
+        var (uiNew, uiOps) = WinReTheme.PatchUiXml(ui, vars, icons, reskin);
+        var (portraitNew, portraitOps) = WinReTheme.PatchPortraitXml(portrait, winre, reskin);
         var splashNew = WinReTheme.PatchSplashXml(WinReResources.ThemeText("splash.xml"), vars);
-        report?.Add($"theme: ui.xml reskinned, portrait.xml renamed ({refs} refs), winre.xml {winre.Length} B");
+        report?.Add($"theme: ui.xml {uiOps} reskin op(s), portrait.xml {portraitOps} op(s), winre.xml {winre.Length} B");
 
-        // Recolour the teal stock images to Windows blue.
-        var recoloured = 0;
-        foreach (var name in WinReTheme.TealImages)
+        // Every stock bitmap is replaced by original art under the same name.
+        var stockArt = WinReResources.Folder("stock");
+        var unreplaced = cpio.Entries
+            .Where(e => e.Name.StartsWith($"{twres}/images/", StringComparison.Ordinal) && e.Name.EndsWith(".png", StringComparison.Ordinal))
+            .Select(e => e.Name[(twres.Length + 8)..])
+            .Where(n => !stockArt.ContainsKey(n))
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+        if (unreplaced.Count > 0)
         {
-            var e = cpio.Get($"{twres}/images/{name}.png");
-            if (e is not null)
-            {
-                e.Data = PngRecolor.AccentToBlue(e.Data);
-                recoloured++;
-            }
+            throw new InvalidOperationException($"Stock images without an original replacement: {string.Join(", ", unreplaced)}.");
         }
-        report?.Add($"images: recoloured {recoloured} teal stock image(s) to blue");
+        foreach (var (name, png) in stockArt.OrderBy(k => k.Key, StringComparer.Ordinal))
+        {
+            cpio.PutFile($"{twres}/images/{name}", png);
+        }
+        report?.Add($"images: {stockArt.Count} stock image(s) replaced with original art");
 
         Utf8Put(cpio, $"{twres}/ui.xml", uiNew);
         Utf8Put(cpio, $"{twres}/portrait.xml", portraitNew);
@@ -191,9 +273,14 @@ public sealed class WinReTwrpBuilder
         Utf8Put(cpio, $"{twres}/splash.xml", splashNew);
 
         var images = WinReResources.Folder("images");
-        foreach (var (name, png) in images.OrderBy(k => k.Key, StringComparer.Ordinal))
+        foreach (var (name, png) in images.Where(kv => !kv.Key.StartsWith("winrecog", StringComparison.Ordinal))
+                     .OrderBy(k => k.Key, StringComparer.Ordinal))
         {
             cpio.PutFile($"{twres}/images/{name}", png);
+        }
+        for (var i = 0; i < gearFrames.Count; i++)
+        {
+            cpio.PutFile($"{twres}/images/winrecog{(i + 1).ToString("000", CultureInfo.InvariantCulture)}.png", gearFrames[i]);
         }
 
         // Fonts from the user's own Windows (full faces; the partition has slack).
@@ -225,8 +312,11 @@ public sealed class WinReTwrpBuilder
         report?.Add($"modules: {modules.Count} kernel module(s) baked into /{ModulePath}");
 
         PatchUsbRc(cpio);
+        InjectNtfsWatchdog(cpio);
+        report?.Add("watchdog: ntfs-3g FUSE deadlock breaker installed as an init service");
 
-        var marker = $"builder={BuilderVersion}\nbase_sha256={baseSha}\n";
+        var gearsId = GearsId(gearsGif);
+        var marker = $"builder={BuilderVersion}\nbase_sha256={baseSha}\ngears={gearsId}\n";
         Utf8Put(cpio, $"{twres}/winre-build.txt", marker);
 
         // Repack.
@@ -256,12 +346,19 @@ public sealed class WinReTwrpBuilder
         }
 
         report?.Add($"image: {img.Length:N0} B, sha256 {Sha256(img)[..16]}...");
-        return new WinReBuildResult(img, Sha256(img), BuilderVersion, baseSha);
+        return new WinReBuildResult(img, Sha256(img), BuilderVersion, baseSha, gearsId);
     }
 
     private IReadOnlyList<(string Name, byte[] Data)> LoadModules(string? overrideDir)
     {
-        var names = new[] { "rwd1_ack.ko", "rwd1_evidence_reader.ko" };
+        var names = new[]
+        {
+            "rwd1_ack.ko", "rwd1_evidence_reader.ko",
+            // The supervised clearers for an invalid RWD1 word and the P3/SMP1 startup
+            // record: baking them in lets the recovery (and the Troubleshoot actions)
+            // fix the Samsung-logo startup gate on the phone, with no host attached.
+            "rwd1_clear_poc.ko", "pram_smp_clear_poc.ko",
+        };
         var list = new List<(string, byte[])>();
         foreach (var name in names)
         {
@@ -278,6 +375,38 @@ public sealed class WinReTwrpBuilder
     }
 
     private const string UsbAnchor = "    setprop sys.usb.controller 10c00000.dwc3\n";
+
+    /// <summary>Init service that runs the ntfs-3g FUSE deadlock breaker.</summary>
+    private const string WatchdogService = "winre_ntfswd";
+    private const string WatchdogScript = "/sbin/winre-ntfs-watchdog.sh";
+
+    /// <summary>
+    /// Registers <see cref="WatchdogScript"/> as an init service started at boot. It has to run
+    /// from init, not from postrecoveryboot.sh, because the ntfs-3g self-deadlock strikes while
+    /// the recovery binary is still mounting /data - long before any TWRP boot script runs, and
+    /// with adb/MTP still down. Started here it is already watching when /data is mounted.
+    /// </summary>
+    private static void InjectNtfsWatchdog(CpioArchive cpio)
+    {
+        var entry = cpio.Get("init.recovery.service.rc");
+        if (entry is null)
+        {
+            return;
+        }
+        var text = Encoding.UTF8.GetString(entry.Data).Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (text.Contains(WatchdogService, StringComparison.Ordinal))
+        {
+            return; // already injected (idempotent rebuild)
+        }
+        var block = "\n"
+            + $"service {WatchdogService} {WatchdogScript}\n"
+            + "    oneshot\n"
+            + "    seclabel u:r:recovery:s0\n"
+            + "\n"
+            + "on boot\n"
+            + $"    start {WatchdogService}\n";
+        entry.Data = Encoding.UTF8.GetBytes(text.TrimEnd('\n') + "\n" + block);
+    }
 
     private static void PatchUsbRc(CpioArchive cpio)
     {

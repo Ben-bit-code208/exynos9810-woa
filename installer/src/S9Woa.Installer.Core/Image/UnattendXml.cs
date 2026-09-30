@@ -12,15 +12,23 @@ public sealed record UnattendOptions
     public string TimeZone { get; init; } = "UTC";
     public string ComputerName { get; init; } = "GALAXY-S9";
     public bool AutoLogon { get; init; } = true;
+
+    /// <summary>
+    /// Display scaling in DPI (96 = 100%). The phone's panel reports no physical size, so Windows
+    /// would start at 100% - unreadably small on a 6.2" 1440x2960 screen; 275 is about 286%.
+    /// Null leaves Windows' own choice.
+    /// </summary>
+    public int? Dpi { get; init; } = 275;
 }
 
 /// <summary>
 /// Generates a Windows Setup answer file that drives OOBE to the desktop without
 /// user input: it creates a local administrator, skips the EULA, privacy,
 /// Microsoft-account and wireless screens, and sets the locale, time zone and
-/// computer name. Uses only the public unattend schema — no product internals.
+/// computer name. It also sets the display scaling (<see cref="UnattendOptions.Dpi"/>)
+/// in the specialize pass. Uses only the public unattend schema — no product internals.
 /// Written into the offline image at <c>Windows\Panther\unattend.xml</c>, which
-/// Windows processes during the oobeSystem pass.
+/// Windows processes during the specialize and oobeSystem passes.
 /// </summary>
 public static class UnattendXml
 {
@@ -29,6 +37,12 @@ public static class UnattendXml
 
     private const string Arch = "arm64";
     private const string PublicKeyToken = "31bf3856ad364e35"; // Well-known Microsoft component token.
+
+    /// <summary>Where the default user profile's hive is loaded while the scaling is written.</summary>
+    private const string DefaultUserHive = @"HKU\S9WoaDefaultUser";
+
+    public const int MinimumDpi = 96;
+    public const int MaximumDpi = 480;
 
     public static string RelativePath => @"Windows\Panther\unattend.xml";
 
@@ -39,15 +53,36 @@ public static class UnattendXml
         {
             throw new ArgumentException("A local account name is required.", nameof(options));
         }
+        if (options.Dpi is < MinimumDpi or > MaximumDpi)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), options.Dpi,
+                $"Display scaling must be between {MinimumDpi} and {MaximumDpi} DPI.");
+        }
 
         var doc = new XDocument(
             new XDeclaration("1.0", "utf-8", null),
             new XElement(Ns + "unattend",
                 new XAttribute(XNamespace.Xmlns + "wcm", Wcm.NamespaceName),
+                options.Dpi is { } dpi ? Specialize(dpi) : null,
                 OobeSystem(options)));
-        using var writer = new StringWriter();
+        // The file is written as UTF-8, so the declaration must say UTF-8. Saving into a plain
+        // StringWriter would declare "utf-16" (its own encoding) over UTF-8 bytes, which Windows
+        // Setup cannot parse: "internal error while loading or searching for an unattend answer file".
+        using var writer = new Utf8StringWriter();
         doc.Save(writer);
         return writer.ToString();
+    }
+
+    /// <summary>The UTF-8 bytes to write to <see cref="RelativePath"/> (no byte order mark).</summary>
+    public static byte[] BuildBytes(UnattendOptions options) => new System.Text.UTF8Encoding(false).GetBytes(Build(options));
+
+    private sealed class Utf8StringWriter : StringWriter
+    {
+        public Utf8StringWriter() : base(System.Globalization.CultureInfo.InvariantCulture)
+        {
+        }
+
+        public override System.Text.Encoding Encoding => new System.Text.UTF8Encoding(false);
     }
 
     private static XElement Component(string name, params object[] content) =>
@@ -58,6 +93,41 @@ public static class UnattendXml
             new XAttribute("language", "neutral"),
             new XAttribute("versionScope", "nonSxS"),
             content);
+
+    /// <summary>
+    /// Display scaling, written the way Settings' custom scaling writes it (<c>LogPixels</c> with
+    /// <c>Win8DpiScaling</c> = 1): into the default user profile, which the account created in
+    /// OOBE is copied from, and into <c>.DEFAULT</c>, which the sign-in screen uses. The unattend
+    /// <c>Display/DPI</c> setting is no longer honoured, so the specialize pass - before any
+    /// account exists - loads the default hive and sets the values with reg.exe.
+    /// </summary>
+    internal static IReadOnlyList<string> DpiCommands(int dpi)
+    {
+        string[] SetScaling(string key) =>
+        [
+            $"reg.exe add \"{key}\\Control Panel\\Desktop\" /v LogPixels /t REG_DWORD /d {dpi} /f",
+            $"reg.exe add \"{key}\\Control Panel\\Desktop\" /v Win8DpiScaling /t REG_DWORD /d 1 /f",
+        ];
+        return
+        [
+            $"cmd.exe /c reg.exe load {DefaultUserHive} \"%SystemDrive%\\Users\\Default\\NTUSER.DAT\"",
+            .. SetScaling(DefaultUserHive),
+            $"reg.exe unload {DefaultUserHive}",
+            .. SetScaling(@"HKU\.DEFAULT"),
+        ];
+    }
+
+    private static XElement Specialize(int dpi) =>
+        new(Ns + "settings",
+            new XAttribute("pass", "specialize"),
+            Component("Microsoft-Windows-Deployment",
+                new XElement(Ns + "RunSynchronous",
+                    DpiCommands(dpi).Select((command, i) =>
+                        new XElement(Ns + "RunSynchronousCommand",
+                            new XAttribute(Wcm + "action", "add"),
+                            new XElement(Ns + "Order", i + 1),
+                            new XElement(Ns + "Description", $"Display scaling {dpi} DPI ({i + 1})"),
+                            new XElement(Ns + "Path", command))))));
 
     private static XElement OobeSystem(UnattendOptions o)
     {

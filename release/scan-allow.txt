@@ -11,11 +11,16 @@ drivers/S6SY761Touch/TouchDriverUpdate.h workspace-path
 installer/src/S9Woa.Installer.App/Assets/AppIcon.ico binary
 # Well-known public Microsoft component publicKeyToken used in the unattend schema (not a secret).
 installer/src/S9Woa.Installer.Core/Image/UnattendXml.cs secret-assign
+# The supervised-clear authorization token: a fixed constant that must match the GPL kernel
+# module (rwd1_clear_poc.c), a guard against accidental firing - not a secret.
+installer/src/S9Woa.Installer.Core/Deploy/BootRouteService.cs secret-assign
 # Fake ESP drive letter (S:) in boot-config tests, not a workspace path.
 installer/tests/S9Woa.Installer.Core.Tests/OobeAndExportTests.cs workspace-path
 # Fake offline-image mount path in the boot-files tests, not a workspace path.
 installer/tests/S9Woa.Installer.Core.Tests/ImageBuilderTests.cs workspace-path
 # WinRE-look recovery: original procedural art (icons, gear/bar frames), committed as installer content.
 tools/twrp-winre/assets/images/*.png binary
+# Original replacements for every stock TWRP bitmap (same names/sizes, drawn by mkassets.py).
+tools/twrp-winre/assets/stock/*.png binary
 # Our own GPL-2.0 kernel modules baked into the recovery; sources and COPYING sit beside them.
 tools/twrp-winre/modules/*.ko binary

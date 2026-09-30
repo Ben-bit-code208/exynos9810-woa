@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using S9Woa.Installer.Core.Image;
 using S9Woa.Installer.Core.Processes;
 using S9Woa.Installer.Core.Toolset;
 using S9Woa.Installer.Core.Twrp;
@@ -70,18 +71,32 @@ public sealed class ToolsetTests : IDisposable
     /// builder version and base hash, which is all Detect(Twrp) checks. The real builder is
     /// exercised end-to-end in WinReBuilderTests against the reference image when present.
     /// </summary>
-    private sealed class FakeWinReBuilder(BaseImageKind kind = BaseImageKind.OfficialTwrp, Func<string, BaseImageKind>? classify = null)
+    private sealed class FakeWinReBuilder(BaseImageKind kind = BaseImageKind.OfficialTwrp, Func<string, BaseImageKind>? classify = null,
+        Func<string, WinReStamp?>? stamp = null)
         : IWinReRecoveryBuilder
     {
+        /// <summary>The gear GIF passed to the last build (null = built-in gears).</summary>
+        public string? LastGears { get; private set; }
+
         public BaseImageKind Classify(string imagePath) => classify?.Invoke(imagePath) ?? kind;
 
-        public WinReRecoveryInfo Build(string basePath, string outputPath, string? modulesDirectory, IProgress<string>? log = null)
+        public WinReStamp? ReadStamp(string imagePath) => stamp?.Invoke(imagePath);
+
+        public WinReRecoveryInfo Build(string basePath, string outputPath, string? modulesDirectory, string? gearsGifPath = null,
+            IProgress<string>? log = null)
         {
+            LastGears = gearsGifPath;
             var bytes = File.ReadAllBytes(basePath);
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
             File.WriteAllBytes(outputPath, bytes);
             var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-            return new WinReRecoveryInfo { Builder = WinReTwrpBuilder.BuilderVersion, BaseSha256 = sha, Sha256 = sha };
+            return new WinReRecoveryInfo
+            {
+                Builder = WinReTwrpBuilder.BuilderVersion,
+                BaseSha256 = sha,
+                Sha256 = sha,
+                Gears = WinReTwrpBuilder.GearsId(gearsGifPath is null ? null : File.ReadAllBytes(gearsGifPath)),
+            };
         }
     }
 
@@ -201,6 +216,42 @@ public sealed class ToolsetTests : IDisposable
         var none = Manager();
         var e = await Assert.ThrowsAsync<InvalidOperationException>(() => none.DownloadReleaseAsync(Tools.Uefi));
         Assert.Contains("no published release", e.Message);
+    }
+
+    [Fact]
+    public async Task AReleaseFirmwareCatalogIsDownloadedWholeAndVerifiedTwice()
+    {
+        byte[] Uefi(byte tag) { var b = BootImageBytes(); b[100] = tag; return b; }
+        var a = Uefi(1);
+        var b = Uefi(2);
+        string Catalog(byte[] second) => $$"""
+            {"schema":"{{FirmwareCatalog.Schema}}","images":[
+              {"file":"star2lte-uefi-22621.2428.img","sha256":"{{Sha(a)}}","windows":"22621.2428","mediaBuilds":["22631.2428"],"loaderSha256":"l1","kernelSha256":"k1"},
+              {"file":"star2lte-uefi-22621.7582.img","sha256":"{{Sha(second)}}","windows":"22621.7582","loaderSha256":"l2","kernelSha256":"k2"}]}
+            """;
+        Dictionary<string, byte[]> Assets(string catalog) => new()
+        {
+            [FirmwareCatalog.FileName] = Encoding.UTF8.GetBytes(catalog),
+            ["star2lte-uefi-22621.2428.img"] = a,
+            ["star2lte-uefi-22621.7582.img"] = b,
+        };
+
+        var m = Manager(http: Release(Assets(Catalog(b))));
+        var status = await m.DownloadReleaseAsync(Tools.Uefi);
+        Assert.Equal(ToolState.Ready, status.State);
+        Assert.Contains("22621.2428, 22621.7582", status.Detail, StringComparison.Ordinal);
+        var catalog = m.LoadFirmwareCatalog()!;
+        Assert.Equal(2, catalog.Present(BootImage.BootPartitionBytes).Count);
+        Assert.Equal("22621.2428", catalog.Choose("22631.2428")!.Image.Windows);
+        Assert.False(File.Exists(m.UefiPayload)); // no legacy single image when the release has a catalog
+
+        // An image that passes SHA256SUMS but not the catalog's own hash is refused, and the
+        // catalog already installed stays as it was.
+        var tampered = Manager(http: Release(Assets(Catalog(Uefi(3)))));
+        Assert.Equal(ToolState.Error, (await tampered.DownloadReleaseAsync(Tools.Uefi)).State);
+        Assert.Equal(2, m.LoadFirmwareCatalog()!.Present(BootImage.BootPartitionBytes).Count);
+        Assert.Equal(2, tampered.LoadFirmwareCatalog()!.Present(BootImage.BootPartitionBytes).Count);
+        Assert.False(Directory.Exists(tampered.UefiCatalogDirectory + ".download"));
     }
 
     private static byte[] Zip(params (string Name, byte[] Data)[] entries)
@@ -334,6 +385,86 @@ public sealed class ToolsetTests : IDisposable
         var r2 = fresh.UseBuildFolder(build);
         Assert.Equal(ToolState.Ready, r2[Tools.Twrp].State);
         Assert.Contains("built from TWRP", r2[Tools.Twrp].Detail);
+    }
+
+    [Fact]
+    public async Task UpdateOsGearsFromTheBuildFolderAreBuiltInAndTracked()
+    {
+        var winre = new FakeWinReBuilder();
+        var m = Manager(winre: winre);
+        await m.UseFileAsync(Tools.Twrp, Touch(Path.Combine(_root, "dl", "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes()));
+        Assert.Contains("built-in gears", m.Detect(Tools.Twrp).Detail);
+        Assert.Null(winre.LastGears);
+
+        // The user's own GIF in <build folder>\twrp is taken into the payload and the recovery
+        // is rebuilt with it (a corrupt one elsewhere in the folder is skipped).
+        var build = Path.Combine(_root, "build");
+        Touch(Path.Combine(build, @"junk\Broken-GearAnimation.gif"), "not a gif"u8.ToArray());
+        Touch(Path.Combine(build, @"twrp\UpdateOS-GearAnimation.gif"), TestGifs.Bytes(TestGifs.TwoFrames));
+        var r = m.UseBuildFolder(build);
+        Assert.Equal(ToolState.Ready, r[Tools.Twrp].State);
+        Assert.Contains("UpdateOS gears from your file", r[Tools.Twrp].Detail);
+        Assert.Equal(m.TwrpGearsPayload, winre.LastGears);
+
+        // Importing the same GIF again changes nothing.
+        Assert.False(m.UseBuildFolder(build).ContainsKey(Tools.Twrp));
+
+        // A different GIF, or none, makes the build stale until it is rebuilt.
+        File.WriteAllBytes(m.TwrpGearsPayload, TestGifs.Bytes(TestGifs.Interlaced));
+        Assert.Equal(ToolState.Missing, m.Detect(Tools.Twrp).State);
+        File.Delete(m.TwrpGearsPayload);
+        Assert.Equal(ToolState.Missing, m.Detect(Tools.Twrp).State);
+        Assert.Equal(ToolState.Ready, m.BuildWinReRecovery().State);
+        Assert.Null(winre.LastGears);
+        Assert.Contains("built-in gears", m.Detect(Tools.Twrp).Detail);
+    }
+
+    [Fact]
+    public void APrebuiltFromTheCurrentBuilderIsReportedAsSuchAndANewerPrebuiltReplacesAnOlderOne()
+    {
+        // Prebuilt images are told apart by content: "WINRE" plus a marker byte for "stamped".
+        static byte[] Prebuilt(int size, bool stamped)
+        {
+            var b = PrebuiltWinReBytes();
+            Array.Resize(ref b, size);
+            b[100] = stamped ? (byte)1 : (byte)0;
+            return b;
+        }
+        var winre = new FakeWinReBuilder(classify: _ => BaseImageKind.WinReBuild,
+            stamp: p => File.ReadAllBytes(p)[100] == 1 ? new WinReStamp(WinReTwrpBuilder.BuilderVersion, "base", "sha256:gif") : null);
+        var build = Path.Combine(_root, "build");
+        var image = Path.Combine(build, @"twrp\star2lte-winre-recovery.img");
+
+        var m = Manager(winre: winre);
+        Touch(image, Prebuilt(8192, stamped: false));
+        Assert.Contains("prebuilt WinRE-look recovery as-is", m.UseBuildFolder(build)[Tools.Twrp].Detail, StringComparison.Ordinal);
+
+        // The folder now holds a newer prebuilt, made by this installer's builder: it replaces the old one.
+        Touch(image, Prebuilt(9000, stamped: true));
+        var r = m.UseBuildFolder(build);
+        Assert.Equal(ToolState.Ready, r[Tools.Twrp].State);
+        Assert.Contains($"current builder ({WinReTwrpBuilder.BuilderVersion}), with the UpdateOS gears", r[Tools.Twrp].Detail, StringComparison.Ordinal);
+        Assert.Equal(9000, new FileInfo(m.TwrpWinrePayload).Length);
+
+        // The same file again changes nothing.
+        Assert.False(m.UseBuildFolder(build).ContainsKey(Tools.Twrp));
+    }
+
+    [Fact]
+    public void EnsureTwrpModulesCompletesAPartialFolderAndKeepsSuppliedModules()
+    {
+        // A build folder that supplies only the reader and the acknowledger must not leave the
+        // startup-record clearers out (the first boot would then fail to clear the records).
+        var m = Manager();
+        var supplied = Touch(Path.Combine(m.TwrpModulesDirectory, "rwd1_ack.ko"), [1, 2, 3]);
+
+        var dir = m.EnsureTwrpModules();
+
+        foreach (var module in new[] { "rwd1_ack.ko", "rwd1_evidence_reader.ko", "rwd1_clear_poc.ko", "pram_smp_clear_poc.ko" })
+        {
+            Assert.True(File.Exists(Path.Combine(dir, module)), module);
+        }
+        Assert.Equal([1, 2, 3], File.ReadAllBytes(supplied));
     }
 
     [Fact]

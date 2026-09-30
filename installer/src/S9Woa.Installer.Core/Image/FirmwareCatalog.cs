@@ -19,9 +19,16 @@ public sealed record FirmwareImage
 }
 
 /// <summary>
+/// The UEFI chosen for a Windows image. <see cref="Exact"/> is false when no image was built for
+/// that Windows build and the nearest one was taken instead.
+/// </summary>
+public sealed record FirmwareChoice(FirmwareImage Image, bool Exact);
+
+/// <summary>
 /// The UEFI images available for this phone. Each build patches the Windows boot loader and
-/// kernel in memory for exactly one Windows build and halts on any other (the phone stays on
-/// the Samsung logo), so the firmware is chosen by the loader/kernel the image actually holds.
+/// kernel in memory for exactly one Windows build (on any other the phone is likely to stay on
+/// the Samsung logo), so the firmware is chosen by the loader/kernel the image actually holds,
+/// falling back to the nearest build for Windows builds nobody has built firmware for yet.
 /// Stored as <c>firmware.json</c> next to the images.
 /// </summary>
 public sealed class FirmwareCatalog
@@ -82,6 +89,56 @@ public sealed class FirmwareCatalog
     /// <summary>Every media build (as DISM reports it) that some image can start.</summary>
     public string SupportedBuilds => string.Join(", ",
         Images.SelectMany(i => i.MediaBuilds.Prepend(i.Windows)).Distinct(StringComparer.Ordinal));
+
+    /// <summary>
+    /// The UEFI to install for a Windows image. An exact match - the image built for this boot
+    /// loader and kernel, or (before the image is built) one listing this media build - is used
+    /// as is. Any other build is still allowed: it gets the image for the nearest build (same
+    /// kernel family first, then the closest revision, else the newest), flagged as not exact,
+    /// because the firmware's boot-time adapters were written for one build and Windows may stop
+    /// at the Samsung logo. Null only when the catalog is empty.
+    /// </summary>
+    public FirmwareChoice? Choose(string? mediaBuild, string? loaderSha256 = null, string? kernelSha256 = null)
+    {
+        if (Images.Count == 0)
+        {
+            return null;
+        }
+        if (loaderSha256 is not null && kernelSha256 is not null && ForBootFiles(loaderSha256, kernelSha256) is { } exact)
+        {
+            return new FirmwareChoice(exact, true);
+        }
+        if (loaderSha256 is null && mediaBuild is not null && ForMediaBuild(mediaBuild) is { } listed)
+        {
+            return new FirmwareChoice(listed, true);
+        }
+        var wanted = ParseBuild(mediaBuild);
+        var nearest = Images
+            .Select(i => (Image: i, Build: ParseBuild(i.MediaBuilds.Prepend(i.Windows).FirstOrDefault(b => wanted is { } w && ParseBuild(b)?.Major == w.Major) ?? i.Windows)))
+            .OrderBy(x => wanted is { } w && x.Build is { } b && Family(b.Major) == Family(w.Major) ? 0 : 1)
+            .ThenBy(x => wanted is { } w && x.Build is { } b && Family(b.Major) == Family(w.Major) ? Math.Abs(b.Revision - w.Revision) : 0)
+            .ThenByDescending(x => x.Build?.Major ?? 0)
+            .ThenByDescending(x => x.Build?.Revision ?? 0)
+            .First();
+        return new FirmwareChoice(nearest.Image, false);
+    }
+
+    /// <summary>"22621.2428" as (22621, 2428); null when it isn't a build number.</summary>
+    internal static (int Major, int Revision)? ParseBuild(string? build)
+    {
+        var parts = build?.Split('.');
+        return parts is { Length: 2 } && int.TryParse(parts[0], out var major) && int.TryParse(parts[1], out var revision)
+            ? (major, revision)
+            : null;
+    }
+
+    /// <summary>Feature-update builds that share one kernel with their base (23H2 on 22H2, 25H2 on 24H2).</summary>
+    private static int Family(int major) => major switch
+    {
+        22631 => 22621,
+        26200 => 26100,
+        _ => major,
+    };
 
     /// <summary>True when the file on disk still has the catalogued SHA-256.</summary>
     public bool Verify(FirmwareImage image)

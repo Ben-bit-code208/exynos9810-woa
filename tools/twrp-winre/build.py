@@ -21,6 +21,12 @@ Outputs (in --outdir):
 
 Usage:
   python build.py --source /path/to/twrp-3.7.0_9-0-star2lte.img --outdir work/out
+  python build.py --source ... --gears /path/to/UpdateOS-GearAnimation.gif
+
+--gears takes the builder's own copy of Microsoft's UpdateOS gear animation
+(optional, like the Segoe fonts): its frames are rendered into the image being
+built, white on black at the size the theme expects, instead of the procedural
+gears. Neither the GIF nor any frame of it is ever written into this repository.
 """
 
 from __future__ import annotations
@@ -30,6 +36,7 @@ import hashlib
 import io
 import re
 import sys
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -42,9 +49,13 @@ HERE = Path(__file__).resolve().parent
 TWRES = "twres"
 THEME = HERE / "theme"
 IMAGES = HERE / "assets" / "images"
+STOCK_ART = HERE / "assets" / "stock"
 SBIN = HERE / "overlay" / "sbin"
 
-BUILDER_VERSION = "winre-1"
+# winre-2: installs the live-progress install screen, the reskin.xml page
+# template/styles/images and the WinRE singleaction/action pages. The installer
+# rebuilds any recovery whose marker names an older builder.
+BUILDER_VERSION = "winre-2"
 # The two GPL kernel modules (our own) baked into the ramdisk so the recovery can
 # clear the retained recovery record and read it back with no host help.
 MODULE_DIR = "sbin/s9woa"
@@ -62,32 +73,9 @@ FONT_FILES = {
 }
 FONT_FALLBACK = "RobotoCondensed-Regular.ttf"
 
-# --------------------------------------------------------------------------
-# Reskin of the STOCK theme: recolour its global variables and swap its fonts so
-# every untouched stock page (install, backup, wipe, mount, settings, terminal,
-# file manager, ...) renders in the WinRE palette without rewriting page logic.
-# These are in-place edits of the base image's own ui.xml, never committed.
-# --------------------------------------------------------------------------
-STOCK_COLOUR_OVERRIDES = {
-    'name="background_color" value="#1A1A1A"': 'name="background_color" value="#000000"',
-    'name="accent_color" value="#0090CA"': 'name="accent_color" value="#0067C0"',
-    'name="accent_color_semitransparent" value="#0090CA30"': 'name="accent_color_semitransparent" value="#0067C030"',
-    'name="text_color" value="#EEEEEE"': 'name="text_color" value="#FFFFFF"',
-    'name="text_button_color" value="#EEEEEE"': 'name="text_button_color" value="#FFFFFF"',
-    'name="highlight_color" value="#1A1A1A80"': 'name="highlight_color" value="#0067C040"',
-    'name="highlight" value="#0090CA"': 'name="highlight" value="#0067C0"',
-}
-# Point the stock fonts at the Segoe faces (kept: fixed = DroidSansMono for the
-# console/terminal, and the keyboard labels).
-STOCK_FONT_OVERRIDES = {
-    'name="font_l" filename="RobotoCondensed-Regular.ttf" size="54"': 'name="font_l" filename="winre-semilight.ttf" size="50"',
-    'name="font_m" filename="RobotoCondensed-Regular.ttf" size="42"': 'name="font_m" filename="winre-regular.ttf" size="40"',
-    'name="font_s" filename="RobotoCondensed-Regular.ttf" size="36"': 'name="font_s" filename="winre-regular.ttf" size="34"',
-}
-# Stock PNGs that carry the teal accent as pixels; recoloured to Windows blue at
-# build time from the base image's own copies (not committed).
-TEAL_IMAGES = ["progress_fill", "slider_used", "slider_touch", "handle",
-               "checkbox_true", "radio_true"]
+# Gears from the user's UpdateOS GIF: luma at or below this is the GIF's
+# near-black background tint and becomes true black.
+GEAR_FLOOR = 8
 
 # --------------------------------------------------------------------------
 # Layout, in the stock theme's 1080x1920 logical space.
@@ -110,6 +98,13 @@ VARS: dict[str, str] = {
     "winre_console_bg": "#000000",
     "winre_btn": "#FFFFFF33",
     "winre_btn_hi": "#FFFFFF66",
+    # Accent as text on black (Windows' light accent for #0078D4) and the
+    # dark band behind the stock tab bars.
+    "winre_accent_text": "#60CDFF",
+    "winre_tabbar": "#202020",
+    # Used by the stock styles but never defined by the stock theme.
+    "button_text_color": "#FFFFFF",
+    "fileselector_highlight_font_color": "#FFFFFF",
 
     "winre_margin": str(MARGIN),
     "winre_tile_w": str(TILE_W),
@@ -125,10 +120,22 @@ VARS: dict[str, str] = {
     "winre_back_x": "120",
     "winre_back_y": "212",
 
+    # The back arrow the page template puts beside stock page titles (which
+    # sit at x=184, y=90 in the stock header), and its touch target.
+    "winre_hdr_back_x": "92",
+    "winre_hdr_back_y": "126",
+    "winre_hdr_hit_y": "64",
+    "winre_hdr_hit_w": "176",
+    "winre_hdr_hit_h": "128",
+    # "Show details" on stock operation pages, where the log used to be.
+    "winre_details_y": "752",
+    "winre_details_h": "96",
+
     "winre_p2_y": "638",
     "winre_p3_y": "696",
     "winre_btn_row_y": "900",
     "winre_btn2_x": str(MARGIN + 400 + 40),
+    "winre_btn_mid_x": str((1080 - 400) // 2),
 
     "winre_console_y": "560",
     "winre_console_h": "1000",
@@ -136,8 +143,15 @@ VARS: dict[str, str] = {
 
     "winre_wait_y": "880",
     "winre_wait_sub_y": "980",
+    "winre_install_detail_y": "1135",
+    "winre_install_foot_y": "1740",
+    "winre_lock_time_y": "760",
+    "winre_lock_sub_y": "880",
 
     "winre_stamp_y": "1812",
+
+    # Set per build from the gear frames actually installed (see gear_speed).
+    "winre_cogs_fps": "24",
 }
 
 for _r in range(1, 5):
@@ -169,19 +183,20 @@ def _cog_xy(cx_px: float, cy_px: float) -> tuple[str, str]:
 
 VARS["winre_cogs_x"], VARS["winre_cogs_y"] = _cog_xy(PANEL_W / 2, PANEL_H / 2)
 _, VARS["winre_cogs_wait_y"] = _cog_xy(PANEL_W / 2, 880 * _SY - COG_DRAWN / 2 - 110)
+# Centred in the area the stock console used to fill (y 320..1280).
+_, VARS["winre_cogs_console_y"] = _cog_xy(PANEL_W / 2, 800 * _SY)
 
 BAR_DRAWN_W = mkassets.BAR_W * min(_SX, _SY)
 BAR_DRAWN_H = mkassets.BAR_H * min(_SX, _SY)
 VARS["winre_bar_x"], VARS["winre_bar_y"] = _centre_xy(
     BAR_DRAWN_W, BAR_DRAWN_H, PANEL_W / 2, 1100 * _SY)
-VARS["winre_push_name_y"] = "1180"
 
 FONT_RESOURCES = """
-		<font name="winre_h1" filename="{light}" size="62"/>
-		<font name="winre_h2" filename="{semilight}" size="42"/>
-		<font name="winre_title" filename="{semilight}" size="38"/>
-		<font name="winre_body" filename="{regular}" size="27"/>
-		<font name="winre_small" filename="{regular}" size="23"/>
+		<font name="winre_h1" filename="winre-light.ttf" size="62"/>
+		<font name="winre_h2" filename="winre-semilight.ttf" size="42"/>
+		<font name="winre_title" filename="winre-semilight.ttf" size="38"/>
+		<font name="winre_body" filename="winre-regular.ttf" size="27"/>
+		<font name="winre_small" filename="winre-regular.ttf" size="23"/>
 		<font name="winre_mono" filename="DroidSansMono.ttf" size="22"/>
 """
 
@@ -205,10 +220,10 @@ def log(msg: str) -> None:
 # Theme patching
 # --------------------------------------------------------------------------
 
-def _inject_vars(xml: str, where: str) -> str:
+def _inject_vars(xml: str, where: str, variables: dict[str, str]) -> str:
     if "<variables>" not in xml:
         raise SystemExit(f"{where} has no <variables> block; cannot place WinRE vars")
-    block = "".join(f'\t\t<variable name="{k}" value="{v}"/>\n' for k, v in VARS.items())
+    block = "".join(f'\t\t<variable name="{k}" value="{v}"/>\n' for k, v in variables.items())
     return xml.replace("<variables>", "<variables>\n" + block, 1)
 
 
@@ -216,75 +231,109 @@ def _load_icon_names() -> list[str]:
     return sorted(p.stem for p in IMAGES.glob("winre_ic_*.png"))
 
 
-def patch_ui_xml(xml: str, font_map: dict[str, str]) -> str:
-    """Extend and reskin the stock ui.xml with the WinRE resources and palette."""
+# Extra single images the WinRE pages declare (determinate install bar).
+EXTRA_IMAGES = ["winre_pbar_empty", "winre_pbar_full"]
+
+_WORD = r"(?<![\w-]){}(?![\w-])"
+
+
+def apply_reskin(text: str, file_name: str, ops_path: Path = THEME / "reskin.xml") -> tuple[str, int]:
+    """Apply the reskin.xml operations for one stock file; every count must match."""
+    root = ET.parse(ops_path).getroot()
+    blocks = [f for f in root.findall("file") if f.get("name") == file_name]
+    if len(blocks) != 1:
+        raise SystemExit(f"reskin.xml has {len(blocks)} blocks for {file_name}")
+    n_ops = 0
+    for op in blocks[0]:
+        want = int(op.get("count", "1"))
+        if op.tag == "replace":
+            find, new = op.findtext("find"), op.findtext("with")
+            got = text.count(find)
+            if got == want:
+                text = text.replace(find, new)
+        elif op.tag == "element":
+            start, end, new = op.findtext("start"), op.findtext("end"), op.findtext("with")
+            got, i, out = 0, 0, []
+            while (j := text.find(start, i)) >= 0:
+                k = text.find(end, j + len(start))
+                if k < 0:
+                    raise SystemExit(f"reskin {file_name}: no {end!r} after {start!r}")
+                out += [text[i:j], new]
+                i = k + len(end)
+                got += 1
+            find = start
+            if got == want:
+                text = "".join(out) + text[i:]
+        elif op.tag == "word":
+            find, new = op.findtext("find"), op.findtext("with")
+            rx = re.compile(_WORD.format(re.escape(find)))
+            got = len(rx.findall(text))
+            if got == want:
+                text = rx.sub(new, text)
+        else:
+            raise SystemExit(f"reskin {file_name}: unknown operation <{op.tag}>")
+        if got != want:
+            raise SystemExit(f"reskin {file_name}: {op.tag} {find!r} matched {got} time(s), "
+                             f"expected {want}; the base theme is not the one this was written for")
+        n_ops += 1
+    return text, n_ops
+
+
+def patch_ui_xml(xml: str) -> tuple[str, int]:
+    """Reskin the stock ui.xml and add the WinRE resources, variables and include."""
     if '<xmlfile name="winre.xml"/>' in xml:
         raise SystemExit("ui.xml already patched - start from a pristine image")
+    xml, n = apply_reskin(xml, "ui.xml")
 
-    fonts = FONT_RESOURCES.format(
-        light=font_map["light"], semilight=font_map["semilight"], regular=font_map["regular"])
     images = "".join(
         f'\t\t<image name="{n}" filename="{n}" retainaspect="1"/>\n'
-        for n in _load_icon_names())
-
+        for n in _load_icon_names() + EXTRA_IMAGES)
     xml = xml.replace(
         '<xmlfile name="portrait.xml"/>',
         '<xmlfile name="portrait.xml"/>\n\t\t<xmlfile name="winre.xml"/>', 1)
-    xml = xml.replace("<resources>", "<resources>\n" + fonts + images + ANIM_RESOURCES, 1)
-    xml = _inject_vars(xml, "ui.xml")
-
-    # Reskin the stock palette and fonts in place.
-    for old, new in {**STOCK_COLOUR_OVERRIDES, **STOCK_FONT_OVERRIDES}.items():
-        if old not in xml:
-            raise SystemExit(f"reskin token not found in ui.xml: {old}")
-        xml = xml.replace(old, new, 1)
-
-    xml = xml.replace(
-        "<description>Default basic theme</description>",
-        "<description>Windows Recovery Environment shell</description>", 1)
-    return xml
+    xml = xml.replace("<resources>", "<resources>\n" + FONT_RESOURCES + images + ANIM_RESOURCES, 1)
+    return _inject_vars(xml, "ui.xml", VARS), n
 
 
 def patch_splash_xml(xml: str) -> str:
     if "%winre_bg%" not in xml:
         raise SystemExit("splash.xml does not use %winre_bg%; refusing to build")
-    return _inject_vars(xml, "splash.xml")
+    return _inject_vars(xml, "splash.xml", VARS)
 
 
-def _page_refs(xml: str) -> set[str]:
-    defined = set(re.findall(r'<page name="(\w+)">', xml))
-    used = set(re.findall(r"<action function=\"page\">(\w+)</action>", xml))
-    used |= set(re.findall(r"tw_clear_destination=(\w+)", xml))
-    return used - defined
+def _pages(xml: str) -> set[str]:
+    return set(re.findall(r'<page name="([\w-]+)">', xml))
 
 
-def patch_portrait_xml(xml: str) -> tuple[str, int]:
-    """Move the stock TWRP menu out of the way of the WinRE 'main' page.
+def _targets(xml: str) -> set[str]:
+    used = set(re.findall(r'<action function="page">([\w-]+)</action>', xml))
+    used |= set(re.findall(r"tw_clear_destination=([\w-]+)", xml))
+    return used
 
-    Only the page definitions are renamed; references to `main` are left alone so
-    they resolve to the WinRE screen, and every stock Home button lands back on
-    WinRE instead of the TWRP grid.
-    """
-    baseline = _page_refs(xml)
-    for old, new in (("main", "twrp_main"), ("main2", "twrp_main2"),
-                     ("lock", "twrp_lock")):
-        needle = f'<page name="{old}">'
-        if needle not in xml:
-            raise SystemExit(f"portrait.xml has no {needle}")
-        xml = xml.replace(needle, f'<page name="{new}">', 1)
 
-    xml, refs = re.subn(r"(?<![\w-])main2(?![\w-])", "twrp_main2", xml)
-
-    introduced = _page_refs(xml) - baseline - {"main", "lock"}
-    if introduced:
-        raise SystemExit(f"renaming broke page references: {sorted(introduced)}")
-    return xml, refs
+def patch_portrait_xml(xml: str, winre: str) -> tuple[str, int]:
+    """Reskin the stock portrait.xml (page renames, styles) and check no page
+    reference was left dangling by the renames."""
+    baseline = _targets(xml) - _pages(xml)
+    new, n = apply_reskin(xml, "portrait.xml")
+    defined = _pages(new) | _pages(winre)
+    dangling = (_targets(new) | _targets(winre)) - defined - baseline
+    if dangling:
+        raise SystemExit(f"the reskin left page references dangling: {sorted(dangling)}")
+    for name in ("main", "lock", "singleaction_page", "action_page", "action_complete"):
+        if name in _pages(new) or name not in _pages(winre):
+            raise SystemExit(f"'{name}' must be defined by winre.xml only")
+    return new, n
 
 
 # --------------------------------------------------------------------------
 
-def resolve_fonts(cpio: Cpio, twres: str) -> tuple[dict[str, str], dict[str, bytes]]:
-    """Prefer real Segoe (full faces); fall back to the ramdisk's own font."""
+def resolve_fonts(cpio: Cpio, twres: str) -> dict[str, bytes]:
+    """Segoe UI from this PC's Windows (full faces) under the winre-*.ttf names.
+
+    Without Segoe (a non-Windows dev box), the ramdisk's own font is placed
+    under the same names so every reference still resolves; the look differs.
+    """
     payload: dict[str, bytes] = {}
     for dest, src in FONT_FILES.items():
         p = WINDOWS_FONTS / src
@@ -294,15 +343,13 @@ def resolve_fonts(cpio: Cpio, twres: str) -> tuple[dict[str, str], dict[str, byt
     if len(payload) == len(FONT_FILES):
         total = sum(len(v) for v in payload.values())
         log(f"  fonts     Segoe UI ({total:,} B, copied from {WINDOWS_FONTS})")
-        return ({"light": "winre-light.ttf", "semilight": "winre-semilight.ttf",
-                 "regular": "winre-regular.ttf"}, payload)
+        return payload
 
-    if cpio.get(f"{twres}/fonts/{FONT_FALLBACK}") is None:
+    fallback = cpio.get(f"{twres}/fonts/{FONT_FALLBACK}")
+    if fallback is None:
         raise SystemExit("neither Segoe nor the fallback font is available")
     log(f"  fonts     FALLBACK {FONT_FALLBACK} (Segoe not found) - look will differ")
-    # With the fallback the stock font swaps would point at missing files, so
-    # only the winre_* resources use it and the stock swaps are skipped.
-    return ({"light": FONT_FALLBACK, "semilight": FONT_FALLBACK, "regular": FONT_FALLBACK}, {})
+    return {dest: fallback.data for dest in FONT_FILES}
 
 
 def sh(path: Path) -> bytes:
@@ -312,19 +359,43 @@ def sh(path: Path) -> bytes:
     return data
 
 
-def recolour_stock_images(cpio: Cpio, twres: str) -> list[str]:
-    """Recolour the teal-carrying stock PNGs to Windows blue, in memory."""
-    done = []
-    for name in TEAL_IMAGES:
-        e = cpio.get(f"{twres}/images/{name}.png")
-        if e is None:
-            continue
-        e.data = mkassets.recolour_accent(e.data)
-        done.append(name)
-    return done
+def gear_speed(delay_ms: float) -> int:
+    """<speed fps> whose TWRP frame period is closest to delay_ms.
+
+    TWRP's GUI loop runs at 30 Hz and an animation advances every
+    floor(30/fps) + 1 loop passes, so only these periods exist.
+    """
+    return min(range(1, 31), key=lambda f: (abs((30 // f + 1) * 1000 / 30 - delay_ms), f))
 
 
-def build(source: Path, outdir: Path) -> None:
+def gif_gear_frames(path: Path) -> tuple[list[bytes], float]:
+    """Render the frames of the user's own gear GIF, white on black, at COG_PX.
+
+    Returns the PNG frames and the mean frame delay in ms. Never persisted
+    outside the image being built.
+    """
+    from PIL import Image, ImageSequence
+
+    im = Image.open(path)
+    if im.format != "GIF":
+        raise SystemExit(f"{path} is not a GIF")
+    frames: list[bytes] = []
+    delays: list[float] = []
+    for fr in ImageSequence.Iterator(im):
+        delays.append(float(fr.info.get("duration") or 100))
+        rgba = fr.convert("RGBA")
+        flat = Image.alpha_composite(Image.new("RGBA", rgba.size, (0, 0, 0, 255)), rgba)
+        luma = flat.convert("RGB").convert("L").point(lambda v: 0 if v <= GEAR_FLOOR else v)
+        luma = luma.resize((mkassets.COG_PX, mkassets.COG_PX), Image.LANCZOS)
+        buf = io.BytesIO()
+        Image.merge("RGB", (luma, luma, luma)).save(buf, "PNG", optimize=True)
+        frames.append(buf.getvalue())
+    if not frames:
+        raise SystemExit(f"{path} has no frames")
+    return frames, sum(delays) / len(delays)
+
+
+def build(source: Path, outdir: Path, gears: Path | None = None) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     report: list[str] = []
 
@@ -355,33 +426,47 @@ def build(source: Path, outdir: Path) -> None:
     if cpio.get(f"{twres}/ui.xml") is None:
         raise SystemExit("no twres/ui.xml in the ramdisk")
 
-    font_map, font_payload = resolve_fonts(cpio, twres)
+    font_payload = resolve_fonts(cpio, twres)
+
+    # Gears: the user's UpdateOS GIF if given, else the procedural frames.
+    if gears is not None:
+        gear_frames, delay = gif_gear_frames(gears)
+        fps = gear_speed(delay)
+        gears_id = "sha256:" + hashlib.sha256(gears.read_bytes()).hexdigest()
+        log(f"  gears     {len(gear_frames)} frame(s) from {gears.name} "
+            f"({delay:.0f} ms/frame -> fps {fps}); NOT stored anywhere but this image")
+    else:
+        gear_frames = [p.read_bytes() for p in sorted(IMAGES.glob("winrecog*.png"))]
+        fps = 24
+        gears_id = "builtin"
+        log(f"  gears     {len(gear_frames)} procedural frame(s)")
+    VARS["winre_cogs_fps"] = str(fps)
 
     ui = cpio.get(f"{twres}/ui.xml").data.decode("utf-8")
     portrait = cpio.get(f"{twres}/portrait.xml").data.decode("utf-8")
     if cpio.get(f"{twres}/splash.xml") is None:
         raise SystemExit("no twres/splash.xml in the ramdisk")
 
-    ui_new = patch_ui_xml(ui, font_map)
-    if not font_payload:
-        # Fallback: undo the stock font swaps so they do not point at missing files.
-        for old, new in STOCK_FONT_OVERRIDES.items():
-            ui_new = ui_new.replace(new, old)
-    portrait_new, refs = patch_portrait_xml(portrait)
     winre = (THEME / "winre.xml").read_text(encoding="utf-8")
+    ui_new, n_ui = patch_ui_xml(ui)
+    portrait_new, n_portrait = patch_portrait_xml(portrait, winre)
     splash_new = patch_splash_xml((THEME / "splash.xml").read_text(encoding="utf-8"))
 
-    log(f"  theme     ui.xml +{len(ui_new) - len(ui):,} B (reskinned), "
-        f"portrait.xml 3 pages renamed / {refs} refs rewritten, "
+    log(f"  theme     ui.xml {n_ui} reskin op(s), portrait.xml {n_portrait} op(s), "
         f"winre.xml {len(winre):,} B")
 
-    recoloured = recolour_stock_images(cpio, twres)
-    log(f"  images    recoloured {len(recoloured)} teal stock image(s) to blue")
+    stock_names = {e.name.rsplit("/", 1)[-1][:-4] for e in cpio.entries
+                   if e.name.startswith(f"{twres}/images/") and e.name.endswith(".png")}
+    stock_art = {p.stem: p.read_bytes() for p in STOCK_ART.glob("*.png")}
+    unreplaced = sorted(stock_names - set(stock_art))
+    if unreplaced:
+        raise SystemExit(f"stock images without an original replacement: {unreplaced}")
+    log(f"  images    {len(stock_art)} stock image(s) replaced with original art")
 
     icons = {p.stem: p.read_bytes() for p in IMAGES.glob("winre_ic_*.png")}
-    cogs = sorted(IMAGES.glob("winrecog*.png"))
+    extras = {n: (IMAGES / f"{n}.png").read_bytes() for n in EXTRA_IMAGES}
     bars = sorted(IMAGES.glob("winrebar*.png"))
-    log(f"  assets    {len(icons)} icons, {len(cogs)} cog frames, {len(bars)} bar frames")
+    log(f"  assets    {len(icons)} icons, {len(gear_frames)} cog frames, {len(bars)} bar frames")
 
     written: list[str] = []
 
@@ -393,10 +478,12 @@ def build(source: Path, outdir: Path) -> None:
     put(f"{twres}/portrait.xml", portrait_new.encode("utf-8"))
     put(f"{twres}/winre.xml", winre.encode("utf-8"))
     put(f"{twres}/splash.xml", splash_new.encode("utf-8"))
-    for n, png in sorted(icons.items()):
+    for n, png in sorted(stock_art.items()):
         put(f"{twres}/images/{n}.png", png)
-    for p in cogs:
-        put(f"{twres}/images/{p.name}", p.read_bytes())
+    for n, png in sorted({**icons, **extras}.items()):
+        put(f"{twres}/images/{n}.png", png)
+    for i, png in enumerate(gear_frames, 1):
+        put(f"{twres}/images/winrecog{i:03d}.png", png)
     for p in bars:
         put(f"{twres}/images/{p.name}", p.read_bytes())
     for dest, blob in font_payload.items():
@@ -408,7 +495,8 @@ def build(source: Path, outdir: Path) -> None:
 
     # GPL kernel modules (our own).
     n_mod = 0
-    for module in ("rwd1_ack.ko", "rwd1_evidence_reader.ko"):
+    for module in ("rwd1_ack.ko", "rwd1_evidence_reader.ko",
+                   "rwd1_clear_poc.ko", "pram_smp_clear_poc.ko"):
         mp = _find_module(module)
         if mp is not None:
             put(f"{MODULE_DIR}/{module}", mp.read_bytes(), 0o644)
@@ -419,9 +507,15 @@ def build(source: Path, outdir: Path) -> None:
     if _patch_usb_rc(cpio):
         written.append("init.recovery.usb.rc   (setprop sys.usb.config adb)")
 
+    # ntfs-3g FUSE deadlock breaker: an init service so it runs before the
+    # recovery binary mounts /data (where the self-deadlock strikes).
+    if _inject_ntfs_watchdog(cpio):
+        written.append("init.recovery.service.rc (winre_ntfswd watchdog)")
+
     # Builder marker.
     marker = (f"builder={BUILDER_VERSION}\n"
-              f"base_sha256={hashlib.sha256(raw).hexdigest()}\n").encode()
+              f"base_sha256={hashlib.sha256(raw).hexdigest()}\n"
+              f"gears={gears_id}\n").encode()
     put(f"{twres}/winre-build.txt", marker)
 
     # ---- repack ----------------------------------------------------------
@@ -464,6 +558,7 @@ def build(source: Path, outdir: Path) -> None:
 
     report.append(f"source        {source}")
     report.append(f"builder       {BUILDER_VERSION}")
+    report.append(f"gears         {gears_id} (fps {fps})")
     report.append(f"image         {out_img.name}  {len(img):,} B")
     report.append(f"image sha256  {hashlib.sha256(img).hexdigest()}")
     report.append(f"theme zip     {out_zip.name}  {len(buf.getvalue()):,} B")
@@ -508,12 +603,35 @@ def _patch_usb_rc(cpio: Cpio) -> bool:
     return True
 
 
+def _inject_ntfs_watchdog(cpio: Cpio) -> bool:
+    entry = cpio.get("init.recovery.service.rc")
+    if entry is None:
+        return False
+    text = entry.data.decode("utf-8").replace("\r\n", "\n")
+    if "winre_ntfswd" in text:
+        return False
+    block = (
+        "\n"
+        "service winre_ntfswd /sbin/winre-ntfs-watchdog.sh\n"
+        "    oneshot\n"
+        "    seclabel u:r:recovery:s0\n"
+        "\n"
+        "on boot\n"
+        "    start winre_ntfswd\n")
+    entry.data = (text.rstrip("\n") + "\n" + block).encode("utf-8")
+    return True
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--source", type=Path, required=True)
     ap.add_argument("--outdir", type=Path, default=HERE / "work" / "out")
+    ap.add_argument("--gears", type=Path, default=None,
+                    help="your own UpdateOS-GearAnimation.gif (optional; never stored)")
     args = ap.parse_args()
-    build(args.source, args.outdir)
+    if args.gears is not None and not args.gears.is_file():
+        raise SystemExit(f"--gears: {args.gears} not found")
+    build(args.source, args.outdir, args.gears)
 
 
 if __name__ == "__main__":

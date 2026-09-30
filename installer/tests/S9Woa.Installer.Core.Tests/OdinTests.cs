@@ -180,8 +180,8 @@ public class OdinTests
         return file;
     }
 
-    private static OdinTwrpFlasher Flasher(FakePhone phone) =>
-        new(new EmptyRegistry(), () => ["COM4"], _ => phone);
+    private static OdinTwrpFlasher Flasher(FakePhone phone, bool startTwrp = true) =>
+        new(new EmptyRegistry(), () => ["COM4"], _ => phone) { StartTwrpAfterFlash = startTwrp };
 
     [Theory]
     [InlineData(3, 1024 * 1024, 2 * 1024 * 1024 + 12345)]
@@ -194,7 +194,7 @@ public class OdinTests
         try
         {
             var log = new List<string>();
-            Flasher(phone).Flash("COM4", image, new SyncProgress(log.Add));
+            Flasher(phone, startTwrp: false).Flash("COM4", image, new SyncProgress(log.Add));
 
             Assert.Equal(version >= 2 ? (int?)partSize : null, phone.FilePartSize);
             Assert.Equal(length, phone.TotalBytes);
@@ -234,26 +234,32 @@ public class OdinTests
     }
 
     [Fact]
-    public void AsksTheBootloaderToStartTwrpAndReboots()
+    public void WritesTwrpToRecoveryAndBootInOneSessionThenRestarts()
     {
-        var pit = BuildPit(("BOOT", 10, 0, "boot.img"), ("RECOVERY", 11, 0, "recovery.img"), ("MISC", 15, 0, "misc.bin"));
-        var phone = new FakePhone(3, pit);
-        var image = WriteImage(3 * 1024 * 1024 + 7);
+        var phone = new FakePhone(3, PhonePit);
+        var length = 3 * 1024 * 1024 + 7;
+        var image = WriteImage(length);
+        var log = new List<string>();
         try
         {
-            var restarted = Flasher(phone).Flash("COM4", image, null);
+            var restarted = Flasher(phone).Flash("COM4", image, new SyncProgress(log.Add));
 
             Assert.True(restarted);
-            Assert.Equal([11, 15], phone.Ends.Select(e => e.Id).Distinct());
-            var misc = phone.Ends.Single(e => e.Id == 15);
-            Assert.Equal(4096, misc.RealSize);
-            Assert.Equal(1, misc.Last);
-            var sent = phone.Received.ToArray();
-            var bcbStart = 4 * 1024 * 1024; // the RECOVERY image padded to whole 1 MiB parts
-            Assert.Equal("boot-recovery", System.Text.Encoding.ASCII.GetString(sent, bcbStart, 13));
-            Assert.Equal(4096, phone.TotalBytes); // the MISC request goes in a session of its own
-            Assert.Equal(2, phone.Commands.Count(c => c == "64/00"));
+            // RECOVERY (11) then BOOT (10), each the whole image, in a single session - never MISC,
+            // which this phone's Download mode will not write.
+            Assert.Equal([11, 10], phone.Ends.Select(e => e.Id).Distinct());
+            Assert.All(phone.Ends.GroupBy(e => e.Id), g => Assert.Equal(length, g.Sum(e => e.RealSize)));
+            Assert.Equal(2L * length, phone.TotalBytes);
+            Assert.Equal(1, phone.Commands.Count(c => c == "64/00"));
             Assert.Equal(["67/00", "67/01"], phone.Commands.TakeLast(2));
+
+            var sent = phone.Received.ToArray();
+            var padded = 4 * 1024 * 1024; // each image padded to whole 1 MiB parts
+            var bytes = File.ReadAllBytes(image);
+            Assert.True(bytes.AsSpan().SequenceEqual(sent.AsSpan(0, length)));
+            Assert.True(bytes.AsSpan().SequenceEqual(sent.AsSpan(padded, length)));
+            Assert.Contains(log, l => l.Contains("BOOT", StringComparison.Ordinal));
+            Assert.Equal(1, log.Count(l => l == "  100%"));
         }
         finally
         {
@@ -262,20 +268,83 @@ public class OdinTests
     }
 
     [Fact]
-    public void ARefusedBootRequestKeepsTheTwrpFlashAndDoesNotReboot()
+    public void AFullPartitionImageIsWrittenToBootWithoutItsPadding()
     {
-        var pit = BuildPit(("BOOT", 10, 0, "boot.img"), ("RECOVERY", 11, 0, "recovery.img"), ("MISC", 15, 0, "misc.bin"));
-        var phone = new FakePhone(3, pit, refuseEndSessionFrom: 2);
+        // A prebuilt WinRE recovery is the whole 65 MiB RECOVERY partition, 43 MiB of it image and
+        // the rest zeros; BOOT is 55 MiB. RECOVERY gets every byte, BOOT only the used part.
+        var phone = new FakePhone(3, PhonePit);
+        var length = (int)BootImage.RecoveryPartitionBytes;
+        const int data = 43_284_306;   // the real prebuilt's last non-zero byte + 1
+        const int used = 43_286_528;   // rounded up to a 4 KiB block
+        var bytes = new byte[length];
+        new Random(7).NextBytes(bytes.AsSpan(0, data));
+        bytes[data - 1] = 0x5A;
+        var image = Path.GetTempFileName();
+        File.WriteAllBytes(image, bytes);
+        try
+        {
+            Assert.True(Flasher(phone).Flash("COM4", image, null));
+
+            Assert.Equal(length, phone.Ends.Where(e => e.Id == 11).Sum(e => e.RealSize));
+            Assert.Equal(used, phone.Ends.Where(e => e.Id == 10).Sum(e => e.RealSize));
+            Assert.Equal((long)length + used, phone.TotalBytes);
+            var sent = phone.Received.ToArray();
+            var recoveryParts = (length + 1024 * 1024 - 1) / (1024 * 1024) * 1024 * 1024;
+            Assert.True(bytes.AsSpan(0, used).SequenceEqual(sent.AsSpan(recoveryParts, used)));
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Theory]
+    [InlineData(10_000, 0, 10_000)]          // no padding: the whole file, even off a block boundary
+    [InlineData(3 * 1024 * 1024, 5000, 8192)] // data then zeros: rounded up to a 4 KiB block
+    [InlineData(3 * 1024 * 1024, 0, 0)]      // all zeros
+    public void UsedLengthDropsOnlyTrailingZeros(int length, int dataBytes, long expected)
+    {
+        var bytes = new byte[length];
+        if (dataBytes > 0)
+        {
+            bytes[dataBytes - 1] = 1;
+        }
+        else if (expected == length)
+        {
+            Array.Fill(bytes, (byte)0xFF);
+        }
+        Assert.Equal(expected, OdinTwrpFlasher.UsedLength(new MemoryStream(bytes)));
+    }
+
+    [Fact]
+    public void ARefusedSessionDoesNotRestartThePhone()
+    {
+        var phone = new FakePhone(3, PhonePit, refuseEndSession: true);
+        var image = WriteImage(2 * 1024 * 1024);
+        try
+        {
+            Assert.Throws<OdinException>(() => Flasher(phone).Flash("COM4", image, null));
+            // A reboot now would start Android, which puts its own recovery back.
+            Assert.DoesNotContain("67/01", phone.Commands);
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
+    public void WithoutABootPartitionTheFlashStaysInDownloadMode()
+    {
+        var phone = new FakePhone(3, BuildPit(("RECOVERY", 11, 0, "recovery.img")));
         var image = WriteImage(2 * 1024 * 1024);
         var log = new List<string>();
         try
         {
-            var restarted = Flasher(phone).Flash("COM4", image, new SyncProgress(log.Add));
-
-            Assert.False(restarted);
-            Assert.Contains("TWRP flashed.", log);
-            Assert.DoesNotContain("67/01", phone.Commands); // rebooting would let Android restore its recovery
-            Assert.Contains(log, l => l.Contains("by hand", StringComparison.Ordinal));
+            Assert.False(Flasher(phone).Flash("COM4", image, new SyncProgress(log.Add)));
+            Assert.Equal([11], phone.Ends.Select(e => e.Id).Distinct());
+            Assert.DoesNotContain("67/01", phone.Commands);
+            Assert.Contains(log, l => l.Contains("stays in Download mode", StringComparison.Ordinal));
         }
         finally
         {
@@ -320,6 +389,47 @@ public class OdinTests
     {
         var phone = new NotLoke();
         Assert.Throws<OdinException>(() => new OdinSession(phone).Handshake());
+    }
+
+    [Theory]
+    [InlineData("USERDATA", true)]
+    [InlineData("userdata", true)]
+    [InlineData("RECOVERY", false)]
+    [InlineData("BOOT", false)]
+    [InlineData("CACHE", false)]
+    public void OnlyUserdataRequiresASparseImage(string name, bool expected) =>
+        Assert.Equal(expected, OdinSession.RequiresSparseImage(name));
+
+    [Fact]
+    public void FlashingRawUserdataIsRejectedBeforeAnyWrite()
+    {
+        var phone = new FakePhone(3, PhonePit);
+        var odin = new OdinSession(phone);
+        odin.Handshake();
+        odin.BeginSession();
+        var userdata = Pit.Find(Pit.Parse(PhonePit), "USERDATA")!;
+        var raw = new byte[256 * 1024]; // an NTFS/ext4/raw image: no sparse magic
+        new Random(1).NextBytes(raw);
+
+        var e = Assert.Throws<OdinException>(() => odin.FlashPartition(new MemoryStream(raw), raw.Length, userdata));
+        Assert.Contains("sparse", e.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Invalid Magic Code", e.Message, StringComparison.Ordinal);
+        Assert.Empty(phone.Received.ToArray()); // nothing was sent to the phone
+    }
+
+    [Fact]
+    public void FlashingSparseUserdataIsAccepted()
+    {
+        var phone = new FakePhone(3, PhonePit);
+        var odin = new OdinSession(phone);
+        odin.Handshake();
+        odin.BeginSession();
+        var userdata = Pit.Find(Pit.Parse(PhonePit), "USERDATA")!;
+        var sparse = new byte[256 * 1024];
+        new byte[] { 0x3A, 0xFF, 0x26, 0xED }.CopyTo(sparse, 0); // Android sparse-image magic
+
+        odin.FlashPartition(new MemoryStream(sparse), sparse.Length, userdata);
+        Assert.Equal(sparse.Length, phone.Ends.Sum(x => x.RealSize));
     }
 
     private sealed class NotLoke : IOdinTransport

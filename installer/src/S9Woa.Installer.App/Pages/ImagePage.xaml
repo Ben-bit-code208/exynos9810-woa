@@ -27,7 +27,7 @@
                         <ProgressBar x:Name="ExtractProgress" Maximum="1" />
                     </StackPanel>
                     <TextBlock x:Name="MediaHint" Style="{StaticResource CaptionSecondaryStyle}"
-                               Text="The phone's firmware starts one exact Windows build; the installer checks your media against it." />
+                               Text="Any Windows 11 ARM64 image can be installed; builds without a matching UEFI may stop at the Samsung logo." />
                 </StackPanel>
             </Border>
 

@@ -2,18 +2,18 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace S9Woa.Installer.Core.Twrp;
 
 /// <summary>
-/// The stock-theme transforms that turn TWRP's own <c>ui.xml</c> and
-/// <c>portrait.xml</c> into the WinRE look: it splices in the WinRE fonts, image
-/// and animation resources plus the shared variable block, recolours the stock
-/// palette and swaps its fonts so every untouched stock page is restyled without
-/// rewriting page logic, includes <c>winre.xml</c>, and renames the stock
-/// <c>main</c>/<c>lock</c> pages out of the way. This mirrors the reference
-/// Python <c>build.py</c> so the two builders produce an equivalent theme; the
-/// same committed <c>winre.xml</c>/<c>splash.xml</c> back both.
+/// The theme transforms that turn TWRP's own <c>ui.xml</c> and <c>portrait.xml</c>
+/// into the WinRE look. The stock edits themselves are data: the committed
+/// <c>theme/reskin.xml</c> (palette, Segoe fonts, the page/console templates, the
+/// keyboards, page renames), applied here exactly as tools/twrp-winre/build.py
+/// applies it, so both builders produce the same theme. On top of that this splices
+/// in the WinRE fonts, image and animation resources and the shared variable block,
+/// and includes <c>winre.xml</c>.
 /// </summary>
 internal static partial class WinReTheme
 {
@@ -26,32 +26,17 @@ internal static partial class WinReTheme
     private const int TextX = 264;
 
     // Must match tools/twrp-winre/mkassets.py.
-    private const int CogPx = 420;
+    private const int CogPx = GearFrames.Size;
     private const int BarW = 480;
     private const int BarH = 12;
     private const int ThemeW = 1080, ThemeH = 1920, PanelW = 1440, PanelH = 2960;
 
-    private static readonly IReadOnlyDictionary<string, string> StockColourOverrides = new Dictionary<string, string>
-    {
-        ["name=\"background_color\" value=\"#1A1A1A\""] = "name=\"background_color\" value=\"#000000\"",
-        ["name=\"accent_color\" value=\"#0090CA\""] = "name=\"accent_color\" value=\"#0067C0\"",
-        ["name=\"accent_color_semitransparent\" value=\"#0090CA30\""] = "name=\"accent_color_semitransparent\" value=\"#0067C030\"",
-        ["name=\"text_color\" value=\"#EEEEEE\""] = "name=\"text_color\" value=\"#FFFFFF\"",
-        ["name=\"text_button_color\" value=\"#EEEEEE\""] = "name=\"text_button_color\" value=\"#FFFFFF\"",
-        ["name=\"highlight_color\" value=\"#1A1A1A80\""] = "name=\"highlight_color\" value=\"#0067C040\"",
-        ["name=\"highlight\" value=\"#0090CA\""] = "name=\"highlight\" value=\"#0067C0\"",
-    };
+    /// <summary>Extra single images the WinRE pages declare (the determinate install bar).</summary>
+    public static readonly IReadOnlyList<string> ExtraImages = ["winre_pbar_empty", "winre_pbar_full"];
 
-    private static readonly IReadOnlyDictionary<string, string> StockFontOverrides = new Dictionary<string, string>
-    {
-        ["name=\"font_l\" filename=\"RobotoCondensed-Regular.ttf\" size=\"54\""] = "name=\"font_l\" filename=\"winre-semilight.ttf\" size=\"50\"",
-        ["name=\"font_m\" filename=\"RobotoCondensed-Regular.ttf\" size=\"42\""] = "name=\"font_m\" filename=\"winre-regular.ttf\" size=\"40\"",
-        ["name=\"font_s\" filename=\"RobotoCondensed-Regular.ttf\" size=\"36\""] = "name=\"font_s\" filename=\"winre-regular.ttf\" size=\"34\"",
-    };
-
-    /// <summary>Stock PNGs that carry the teal accent as pixels (recoloured to blue).</summary>
-    public static readonly IReadOnlyList<string> TealImages =
-        ["progress_fill", "slider_used", "slider_touch", "handle", "checkbox_true", "radio_true"];
+    /// <summary>Pages winre.xml must own (TWRP navigates to them by name).</summary>
+    public static readonly IReadOnlyList<string> WinReOwnedPages =
+        ["main", "lock", "singleaction_page", "action_page", "action_complete"];
 
     private const string FontResources =
         "\n\t\t<font name=\"winre_h1\" filename=\"winre-light.ttf\" size=\"62\"/>\n" +
@@ -65,8 +50,10 @@ internal static partial class WinReTheme
         "\t\t<animation name=\"winre_cogs\" filename=\"winrecog\" retainaspect=\"1\"/>\n" +
         "\t\t<animation name=\"winre_bar\" filename=\"winrebar\" retainaspect=\"1\"/>\n";
 
-    public static IReadOnlyDictionary<string, string> BuildVariables()
+    /// <summary>The shared variable block (identical to build.py's VARS).</summary>
+    public static IReadOnlyDictionary<string, string> BuildVariables(int cogsFps = 24)
     {
+        static string S(int n) => n.ToString(CultureInfo.InvariantCulture);
         var v = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["winre_bg"] = "#000000",
@@ -78,37 +65,53 @@ internal static partial class WinReTheme
             ["winre_console_bg"] = "#000000",
             ["winre_btn"] = "#FFFFFF33",
             ["winre_btn_hi"] = "#FFFFFF66",
-            ["winre_margin"] = Margin.ToString(CultureInfo.InvariantCulture),
-            ["winre_tile_w"] = TileW.ToString(CultureInfo.InvariantCulture),
-            ["winre_tile_h"] = TileH.ToString(CultureInfo.InvariantCulture),
-            ["winre_icon_x"] = IconX.ToString(CultureInfo.InvariantCulture),
-            ["winre_text_x"] = TextX.ToString(CultureInfo.InvariantCulture),
+            ["winre_accent_text"] = "#60CDFF",
+            ["winre_tabbar"] = "#202020",
+            ["button_text_color"] = "#FFFFFF",
+            ["fileselector_highlight_font_color"] = "#FFFFFF",
+            ["winre_margin"] = S(Margin),
+            ["winre_tile_w"] = S(TileW),
+            ["winre_tile_h"] = S(TileH),
+            ["winre_icon_x"] = S(IconX),
+            ["winre_text_x"] = S(TextX),
             ["center_x"] = "540",
             ["winre_hdr_y"] = "336",
             ["winre_sub_y"] = "432",
             ["winre_back_hit_y"] = "120",
             ["winre_back_x"] = "120",
             ["winre_back_y"] = "212",
+            ["winre_hdr_back_x"] = "92",
+            ["winre_hdr_back_y"] = "126",
+            ["winre_hdr_hit_y"] = "64",
+            ["winre_hdr_hit_w"] = "176",
+            ["winre_hdr_hit_h"] = "128",
+            ["winre_details_y"] = "752",
+            ["winre_details_h"] = "96",
             ["winre_p2_y"] = "638",
             ["winre_p3_y"] = "696",
             ["winre_btn_row_y"] = "900",
-            ["winre_btn2_x"] = (Margin + 400 + 40).ToString(CultureInfo.InvariantCulture),
+            ["winre_btn2_x"] = S(Margin + 400 + 40),
+            ["winre_btn_mid_x"] = S((1080 - 400) / 2),
             ["winre_console_y"] = "560",
             ["winre_console_h"] = "1000",
             ["winre_out_btn_y"] = "1620",
             ["winre_wait_y"] = "880",
             ["winre_wait_sub_y"] = "980",
+            ["winre_install_detail_y"] = "1135",
+            ["winre_install_foot_y"] = "1740",
+            ["winre_lock_time_y"] = "760",
+            ["winre_lock_sub_y"] = "880",
             ["winre_stamp_y"] = "1812",
-            ["winre_push_name_y"] = "1180",
+            ["winre_cogs_fps"] = S(cogsFps),
         };
         for (var r = 1; r <= 4; r++)
         {
             var y = Row0 + ((r - 1) * RowPitch);
-            v[$"winre_r{r}_y"] = y.ToString(CultureInfo.InvariantCulture);
-            v[$"winre_r{r}_icon_y"] = (y + (TileH / 2)).ToString(CultureInfo.InvariantCulture);
-            v[$"winre_r{r}_title_y"] = (y + 54).ToString(CultureInfo.InvariantCulture);
-            v[$"winre_r{r}_desc_y"] = (y + 122).ToString(CultureInfo.InvariantCulture);
-            v[$"winre_r{r}_solo_y"] = (y + 86).ToString(CultureInfo.InvariantCulture);
+            v[$"winre_r{r}_y"] = S(y);
+            v[$"winre_r{r}_icon_y"] = S(y + (TileH / 2));
+            v[$"winre_r{r}_title_y"] = S(y + 54);
+            v[$"winre_r{r}_desc_y"] = S(y + 122);
+            v[$"winre_r{r}_solo_y"] = S(y + 86);
         }
 
         // Cog / bar placement, solved so the retainaspect-scaled bitmap lands
@@ -117,11 +120,9 @@ internal static partial class WinReTheme
         var min = Math.Min(sx, sy);
         var cogDrawn = CogPx * min;
         (v["winre_cogs_x"], v["winre_cogs_y"]) = CentreXy(cogDrawn, cogDrawn, PanelW / 2.0, PanelH / 2.0, sx, sy);
-        var (_, waitY) = CentreXy(cogDrawn, cogDrawn, PanelW / 2.0, (880 * sy) - (cogDrawn / 2) - 110, sx, sy);
-        v["winre_cogs_wait_y"] = waitY;
-        var barW = BarW * min;
-        var barH = BarH * min;
-        (v["winre_bar_x"], v["winre_bar_y"]) = CentreXy(barW, barH, PanelW / 2.0, 1100 * sy, sx, sy);
+        v["winre_cogs_wait_y"] = CentreXy(cogDrawn, cogDrawn, PanelW / 2.0, (880 * sy) - (cogDrawn / 2) - 110, sx, sy).Y;
+        v["winre_cogs_console_y"] = CentreXy(cogDrawn, cogDrawn, PanelW / 2.0, 800 * sy, sx, sy).Y;
+        (v["winre_bar_x"], v["winre_bar_y"]) = CentreXy(BarW * min, BarH * min, PanelW / 2.0, 1100 * sy, sx, sy);
         return v;
     }
 
@@ -129,34 +130,25 @@ internal static partial class WinReTheme
         (Math.Round((cx - (w / 2)) / sx, MidpointRounding.ToEven).ToString("0", CultureInfo.InvariantCulture),
          Math.Round((cy - (h / 2)) / sy, MidpointRounding.ToEven).ToString("0", CultureInfo.InvariantCulture));
 
-    public static string PatchUiXml(string xml, IReadOnlyDictionary<string, string> vars, IReadOnlyList<string> iconNames)
+    /// <summary>Reskin the stock ui.xml and add the WinRE resources, variables and include.</summary>
+    public static (string Xml, int Operations) PatchUiXml(string xml, IReadOnlyDictionary<string, string> vars,
+        IReadOnlyList<string> iconNames, string reskin)
     {
         if (xml.Contains("<xmlfile name=\"winre.xml\"/>", StringComparison.Ordinal))
         {
             throw new InvalidOperationException("ui.xml is already patched; start from a pristine image.");
         }
+        (xml, var ops) = ApplyReskin(xml, "ui.xml", reskin);
+
         var images = new StringBuilder();
-        foreach (var n in iconNames)
+        foreach (var n in iconNames.Concat(ExtraImages))
         {
             images.Append("\t\t<image name=\"").Append(n).Append("\" filename=\"").Append(n).Append("\" retainaspect=\"1\"/>\n");
         }
-
         xml = Replace(xml, "<xmlfile name=\"portrait.xml\"/>",
             "<xmlfile name=\"portrait.xml\"/>\n\t\t<xmlfile name=\"winre.xml\"/>");
         xml = Replace(xml, "<resources>", "<resources>\n" + FontResources + images + AnimResources);
-        xml = InjectVars(xml, vars, "ui.xml");
-
-        foreach (var (old, @new) in StockColourOverrides)
-        {
-            xml = Replace(xml, old, @new);
-        }
-        foreach (var (old, @new) in StockFontOverrides)
-        {
-            xml = Replace(xml, old, @new);
-        }
-        xml = Replace(xml, "<description>Default basic theme</description>",
-            "<description>Windows Recovery Environment shell</description>");
-        return xml;
+        return (InjectVars(xml, vars, "ui.xml"), ops);
     }
 
     public static string PatchSplashXml(string xml, IReadOnlyDictionary<string, string> vars)
@@ -168,20 +160,139 @@ internal static partial class WinReTheme
         return InjectVars(xml, vars, "splash.xml");
     }
 
-    public static (string Xml, int RefsRewritten) PatchPortraitXml(string xml)
+    /// <summary>
+    /// Reskin the stock portrait.xml (page renames, accent-as-text styles) and check the
+    /// renames left no page reference dangling and that winre.xml owns the pages TWRP
+    /// navigates to by name.
+    /// </summary>
+    public static (string Xml, int Operations) PatchPortraitXml(string xml, string winre, string reskin)
     {
-        foreach (var (old, @new) in new[] { ("main", "twrp_main"), ("main2", "twrp_main2"), ("lock", "twrp_lock") })
+        var baseline = Targets(xml).Except(Pages(xml)).ToHashSet(StringComparer.Ordinal);
+        var (patched, ops) = ApplyReskin(xml, "portrait.xml", reskin);
+        var defined = Pages(patched).Union(Pages(winre)).ToHashSet(StringComparer.Ordinal);
+        var dangling = Targets(patched).Union(Targets(winre))
+            .Where(t => !defined.Contains(t) && !baseline.Contains(t))
+            .OrderBy(t => t, StringComparer.Ordinal)
+            .ToList();
+        if (dangling.Count > 0)
         {
-            var needle = $"<page name=\"{old}\">";
-            if (!xml.Contains(needle, StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException($"portrait.xml has no {needle}.");
-            }
-            xml = Replace(xml, needle, $"<page name=\"{@new}\">");
+            throw new InvalidOperationException($"The reskin left page references dangling: {string.Join(", ", dangling)}.");
         }
-        var count = Main2Regex().Matches(xml).Count;
-        xml = Main2Regex().Replace(xml, "twrp_main2");
-        return (xml, count);
+        foreach (var name in WinReOwnedPages)
+        {
+            if (Pages(patched).Contains(name) || !Pages(winre).Contains(name))
+            {
+                throw new InvalidOperationException($"'{name}' must be defined by winre.xml only.");
+            }
+        }
+        return (patched, ops);
+    }
+
+    /// <summary>
+    /// Apply the reskin.xml operations for one stock file, in order. Every operation's
+    /// match count must equal its declared count, so a base theme other than the one
+    /// reskin.xml was written against stops the build instead of half-applying.
+    /// </summary>
+    public static (string Text, int Operations) ApplyReskin(string text, string fileName, string reskinXml)
+    {
+        var doc = XDocument.Parse(reskinXml);
+        var blocks = doc.Root!.Elements("file").Where(f => (string?)f.Attribute("name") == fileName).ToList();
+        if (blocks.Count != 1)
+        {
+            throw new InvalidOperationException($"reskin.xml has {blocks.Count} blocks for {fileName}.");
+        }
+        var ops = 0;
+        foreach (var op in blocks[0].Elements())
+        {
+            var want = int.Parse((string?)op.Attribute("count") ?? "1", CultureInfo.InvariantCulture);
+            int got;
+            string anchor;
+            switch (op.Name.LocalName)
+            {
+                case "replace":
+                {
+                    anchor = Child(op, "find");
+                    var with = Child(op, "with");
+                    got = CountOf(text, anchor);
+                    if (got == want)
+                    {
+                        text = text.Replace(anchor, with, StringComparison.Ordinal);
+                    }
+                    break;
+                }
+                case "element":
+                {
+                    anchor = Child(op, "start");
+                    var end = Child(op, "end");
+                    var with = Child(op, "with");
+                    var sb = new StringBuilder();
+                    int i = 0, j;
+                    got = 0;
+                    while ((j = text.IndexOf(anchor, i, StringComparison.Ordinal)) >= 0)
+                    {
+                        var k = text.IndexOf(end, j + anchor.Length, StringComparison.Ordinal);
+                        if (k < 0)
+                        {
+                            throw new InvalidOperationException($"reskin {fileName}: no '{end}' after '{anchor}'.");
+                        }
+                        sb.Append(text, i, j - i).Append(with);
+                        i = k + end.Length;
+                        got++;
+                    }
+                    if (got == want)
+                    {
+                        text = sb.Append(text, i, text.Length - i).ToString();
+                    }
+                    break;
+                }
+                case "word":
+                {
+                    anchor = Child(op, "find");
+                    var with = Child(op, "with");
+                    var rx = new Regex(@"(?<![\w-])" + Regex.Escape(anchor) + @"(?![\w-])", RegexOptions.CultureInvariant);
+                    got = rx.Matches(text).Count;
+                    if (got == want)
+                    {
+                        text = rx.Replace(text, with);
+                    }
+                    break;
+                }
+                default:
+                    throw new InvalidOperationException($"reskin {fileName}: unknown operation <{op.Name.LocalName}>.");
+            }
+            if (got != want)
+            {
+                throw new InvalidOperationException(
+                    $"reskin {fileName}: {op.Name.LocalName} '{anchor}' matched {got} time(s), expected {want}; "
+                    + "the base theme is not the one this installer was written for.");
+            }
+            ops++;
+        }
+        return (text, ops);
+    }
+
+    private static string Child(XElement op, string name) =>
+        op.Element(name)?.Value ?? throw new InvalidOperationException($"reskin operation without <{name}>.");
+
+    private static int CountOf(string s, string sub)
+    {
+        int n = 0, i = 0;
+        while ((i = s.IndexOf(sub, i, StringComparison.Ordinal)) >= 0)
+        {
+            n++;
+            i += sub.Length;
+        }
+        return n;
+    }
+
+    private static HashSet<string> Pages(string xml) =>
+        PageRegex().Matches(xml).Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+
+    private static HashSet<string> Targets(string xml)
+    {
+        var set = TargetRegex().Matches(xml).Select(m => m.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+        set.UnionWith(ClearDestRegex().Matches(xml).Select(m => m.Groups[1].Value));
+        return set;
     }
 
     private static string InjectVars(string xml, IReadOnlyDictionary<string, string> vars, string where)
@@ -208,6 +319,12 @@ internal static partial class WinReTheme
         return string.Concat(xml.AsSpan(0, i), @new, xml.AsSpan(i + old.Length));
     }
 
-    [GeneratedRegex(@"(?<![\w-])main2(?![\w-])")]
-    private static partial Regex Main2Regex();
+    [GeneratedRegex("<page name=\"([\\w-]+)\">")]
+    private static partial Regex PageRegex();
+
+    [GeneratedRegex("<action function=\"page\">([\\w-]+)</action>")]
+    private static partial Regex TargetRegex();
+
+    [GeneratedRegex("tw_clear_destination=([\\w-]+)")]
+    private static partial Regex ClearDestRegex();
 }

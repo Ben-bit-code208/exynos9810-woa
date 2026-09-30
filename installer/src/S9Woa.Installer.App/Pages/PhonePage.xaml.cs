@@ -43,7 +43,7 @@ public sealed partial class PhonePage : Page, IWizardStep
         SearchRing.IsActive = true;
         DeviceIcon.Foreground = (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
         DeviceTitle.Text = title;
-        DeviceDetail.Text = detail;
+        DeviceDetail.Text = AppServices.Redact(detail);
         RebootMenu.Visibility = Visibility.Collapsed;
         ChecksCard.Visibility = Visibility.Collapsed;
         StatusBar.IsOpen = false;
@@ -199,7 +199,7 @@ public sealed partial class PhonePage : Page, IWizardStep
     {
         StatusBar.Severity = severity;
         StatusBar.Title = title;
-        StatusBar.Message = message;
+        StatusBar.Message = AppServices.Redact(message);
         StatusBar.IsOpen = true;
     }
 

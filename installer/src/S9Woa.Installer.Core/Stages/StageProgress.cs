@@ -54,7 +54,7 @@ public sealed partial class StageProgress
     [GeneratedRegex(@"^Backing up \S+ \((\d+) of (\d+)\)")]
     private static partial Regex BackingUp();
 
-    [GeneratedRegex(@"^\d\d:\d\d:\d\d ")]
+    [GeneratedRegex(@"^[0-9]{2}:[0-9]{2}:[0-9]{2} ")]
     private static partial Regex Timestamp();
 
     public string? Stage { get; private set; }

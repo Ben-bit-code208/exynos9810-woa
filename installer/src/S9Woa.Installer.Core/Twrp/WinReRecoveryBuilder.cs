@@ -19,6 +19,12 @@ public sealed class WinReRecoveryInfo
     /// <summary>SHA-256 of the built WinRE image.</summary>
     public string Sha256 { get; set; } = "";
 
+    /// <summary>
+    /// Which gears the image carries: <c>builtin</c>, or <c>sha256:&lt;hex&gt;</c> of the
+    /// user's UpdateOS GIF they were rendered from (empty for a prebuilt image).
+    /// </summary>
+    public string Gears { get; set; } = "";
+
     /// <summary><c>built</c> or <c>prebuilt</c>.</summary>
     public string Source { get; set; } = "built";
 
@@ -53,10 +59,15 @@ public interface IWinReRecoveryBuilder
     /// <summary>
     /// Build the WinRE recovery from the official TWRP at <paramref name="basePath"/> into
     /// <paramref name="outputPath"/>, using kernel modules from <paramref name="modulesDirectory"/>
-    /// if present (else the embedded ones). Throws with a user-facing message if the base is
-    /// not the official TWRP or a Windows font is missing.
+    /// if present (else the embedded ones) and, if given, the gears from the user's own
+    /// UpdateOS GIF at <paramref name="gearsGifPath"/>. Throws with a user-facing message if
+    /// the base is not the official TWRP, a Windows font is missing or the GIF is unreadable.
     /// </summary>
-    WinReRecoveryInfo Build(string basePath, string outputPath, string? modulesDirectory, IProgress<string>? log = null);
+    WinReRecoveryInfo Build(string basePath, string outputPath, string? modulesDirectory, string? gearsGifPath = null,
+        IProgress<string>? log = null);
+
+    /// <summary>The build stamp of a WinRE image made by this installer, or null.</summary>
+    WinReStamp? ReadStamp(string imagePath) => null;
 }
 
 /// <summary>Default builder backed by <see cref="WinReTwrpBuilder"/>.</summary>
@@ -65,10 +76,16 @@ public sealed class WinReRecoveryBuilder : IWinReRecoveryBuilder
     public BaseImageKind Classify(string imagePath) =>
         File.Exists(imagePath) ? WinReTwrpBuilder.Classify(File.ReadAllBytes(imagePath)) : BaseImageKind.Unknown;
 
-    public WinReRecoveryInfo Build(string basePath, string outputPath, string? modulesDirectory, IProgress<string>? log = null)
+    public WinReStamp? ReadStamp(string imagePath) =>
+        File.Exists(imagePath) ? WinReTwrpBuilder.ReadStamp(File.ReadAllBytes(imagePath)) : null;
+
+    public WinReRecoveryInfo Build(string basePath, string outputPath, string? modulesDirectory, string? gearsGifPath = null,
+        IProgress<string>? log = null)
     {
         var report = new List<string>();
-        var result = new WinReTwrpBuilder().Build(File.ReadAllBytes(basePath), modulesDirectory: modulesDirectory, report: report);
+        var gif = gearsGifPath is not null ? File.ReadAllBytes(gearsGifPath) : null;
+        var result = new WinReTwrpBuilder().Build(File.ReadAllBytes(basePath), modulesDirectory: modulesDirectory,
+            report: report, gearsGif: gif);
         foreach (var line in report)
         {
             log?.Report(line);
@@ -80,6 +97,7 @@ public sealed class WinReRecoveryBuilder : IWinReRecoveryBuilder
             Builder = result.BuilderVersion,
             BaseSha256 = result.BaseSha256,
             Sha256 = result.Sha256,
+            Gears = result.Gears,
             Source = WinReRecoveryInfo.Built,
         };
     }

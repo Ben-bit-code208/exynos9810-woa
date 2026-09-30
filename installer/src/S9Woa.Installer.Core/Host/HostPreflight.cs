@@ -67,7 +67,7 @@ public static class HostPreflight
                 ? new("admin", "Administrator", CheckSeverity.Pass, "Running elevated.")
                 : new("admin", "Administrator", CheckSeverity.Blocker, "DISM and disk tools need an elevated installer. Restart it as administrator."),
             host.OsVersion.Build >= MinimumBuild
-                ? new("os", "Windows version", CheckSeverity.Pass, $"Build {host.OsVersion.Build}.")
+                ? new("os", "Windows version", CheckSeverity.Pass, "Supported.")
                 : new("os", "Windows version", CheckSeverity.Blocker, $"Windows 10 2004 (build {MinimumBuild}) or newer is required."),
             host.OsArchitecture is Architecture.X64 or Architecture.Arm64
                 ? new("arch", "PC architecture", CheckSeverity.Pass, host.OsArchitecture.ToString())

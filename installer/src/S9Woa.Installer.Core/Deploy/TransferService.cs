@@ -55,12 +55,12 @@ public sealed class TransferService
         var deviceDir = _twrp.RamStagingDir;
         var hostDir = Path.Combine(Path.GetTempPath(), $"s9woa-transfer-{Guid.NewGuid():N}");
         Directory.CreateDirectory(hostDir);
-        await _twrp.MakeDirAsync(deviceDir, ct).ConfigureAwait(false);
-
         var clock = Stopwatch.StartNew();
         long doneMiB = 0, zeroMiB = 0, lastReportMiB = 0;
-        var lastStatusMs = -10_000L;
-        await _twrp.SetInstallStatusAsync(WinReStatus.Copying(0, 0, plannedMiB * Mib), ct).ConfigureAwait(false);
+        // The phone's "Installing Windows" screen: the status rides on the next shell command
+        // (the mkdir just below, then every chunk's dd), so it costs no round trip of its own.
+        _twrp.QueueInstallStatus(WinReStatus.Copying(0, 0, plannedMiB * Mib));
+        await _twrp.MakeDirAsync(deviceDir, ct).ConfigureAwait(false);
         Task<Staged>? pending = null;
         await using var image = new FileStream(hostImageFile, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 20, FileOptions.Asynchronous);
         try
@@ -76,6 +76,11 @@ public sealed class TransferService
                 pending = i + 1 < chunks.Count ? StageAsync(image, chunks[i + 1], (i + 1) % 2, deviceDir, hostDir, options.Verify, ct) : null;
 
                 var c = staged.Chunk;
+                // Written by the dd's own shell right after the chunk lands, so the phone's bar
+                // shows the chunk just written.
+                var afterMiB = doneMiB + c.CountMiB;
+                _twrp.QueueInstallStatus(
+                    WinReStatus.Copying(WinReStatus.PercentOf(afterMiB, plannedMiB), afterMiB * Mib, plannedMiB * Mib));
                 if (staged.IsZero)
                 {
                     await _twrp.ZeroPartitionWindowAsync(partitionName, c.OffsetMiB, c.CountMiB, ct).ConfigureAwait(false);
@@ -96,15 +101,6 @@ public sealed class TransferService
                 }
 
                 doneMiB += c.CountMiB;
-                // Refresh the on-phone "Installing Windows" status at most every ~5 s so the
-                // watcher can show a live phase caption without pushing a poke on every chunk.
-                if (clock.ElapsedMilliseconds - lastStatusMs >= 5000)
-                {
-                    lastStatusMs = clock.ElapsedMilliseconds;
-                    await _twrp.SetInstallStatusAsync(
-                        WinReStatus.Copying(WinReStatus.PercentOf(doneMiB, plannedMiB), doneMiB * Mib, plannedMiB * Mib), ct)
-                        .ConfigureAwait(false);
-                }
                 if (doneMiB - lastReportMiB >= 1024 || doneMiB == plannedMiB)
                 {
                     lastReportMiB = doneMiB;
@@ -118,6 +114,9 @@ public sealed class TransferService
             {
                 try { await pending.ConfigureAwait(false); } catch (Exception) when (ct.IsCancellationRequested || pending.IsFaulted) { }
             }
+            // The status file lives in the staging dir: removing it ends the screen for this
+            // phase, and nothing queued may recreate it.
+            _twrp.DiscardQueuedInstallStatus();
             try { await _twrp.ShellAsync($"rm -rf {deviceDir}", CancellationToken.None).ConfigureAwait(false); } catch (InvalidOperationException) { }
             try { Directory.Delete(hostDir, recursive: true); } catch (IOException) { }
         }
@@ -234,7 +233,7 @@ public sealed class TransferService
                 $"Refusing to write: {Path.GetFileName(hostImageFile)} ({size} B) is larger than partition {partitionName} ({partSize} B).");
         }
 
-        await _twrp.SetInstallStatusAsync(WinReStatus.Firmware(), ct).ConfigureAwait(false);
+        _twrp.QueueInstallStatus(WinReStatus.Firmware());
         await _twrp.MakeDirAsync(_twrp.RamStagingDir, ct).ConfigureAwait(false);
         var staged = $"{_twrp.RamStagingDir}/{partitionName}.img";
         await _twrp.PushAsync(hostImageFile, staged, ct).ConfigureAwait(false);

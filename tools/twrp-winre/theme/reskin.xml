@@ -1,0 +1,340 @@
+<?xml version="1.0"?>
+<!--
+	SPDX-License-Identifier: BSD-2-Clause-Patent
+
+	Reskin of the STOCK TWRP theme to the WinRE look, as data.
+
+	Both builders (tools/twrp-winre/build.py and the installer's C#
+	WinReTwrpBuilder) apply exactly these edits, in this order, to the base
+	image's own ui.xml and portrait.xml. Nothing of the stock theme is copied
+	into this repository: every <find> is a short anchor in the official
+	TWRP 3.7.0_9-0 files, and every <with> is written here.
+
+	Operations:
+	  replace  every occurrence of <find> becomes <with>; the number of
+	           occurrences must equal count, else the build stops (the base
+	           is not what this file was written against)
+	  element  each span from <start> through the first <end> after it becomes
+	           <with>; count is the number of spans
+	  word     whole-word rename (neither side a letter, digit, _ or -)
+
+	What it does, in short: the palette becomes black, white and Windows blue;
+	Segoe UI (copied from the builder's own Windows) replaces Roboto; the page
+	template loses the blue header bar and the TeamWin logo and gains a back
+	arrow beside a Segoe UI Light title; the operation pages show turning gears
+	instead of a scrolling log (the log stays one tap away); the keyboards go
+	dark with white glyphs. The images these pages use are replaced by name
+	with the original art in assets/stock.
+
+	Five stock pages are renamed so winre.xml can supply WinRE versions under
+	the names TWRP itself navigates to: main, lock, singleaction_page (every
+	openrecoveryscript command passes through it), action_page and
+	action_complete. main2 (the stock TWRP menu) becomes twrp_main2 and is
+	what "Full TWRP interface" opens.
+-->
+<reskin>
+	<file name="ui.xml">
+		<replace count="1">
+			<find><![CDATA[<description>Default basic theme</description>]]></find>
+			<with><![CDATA[<description>Windows Recovery Environment shell</description>]]></with>
+		</replace>
+
+		<!-- Fonts: Segoe UI Light for titles, Regular for body text. -->
+		<replace count="1">
+			<find><![CDATA[<font name="font_l" filename="RobotoCondensed-Regular.ttf" size="54"/>]]></find>
+			<with><![CDATA[<font name="font_l" filename="winre-light.ttf" size="52"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<font name="font_m" filename="RobotoCondensed-Regular.ttf" size="42"/>]]></find>
+			<with><![CDATA[<font name="font_m" filename="winre-regular.ttf" size="38"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<font name="font_s" filename="RobotoCondensed-Regular.ttf" size="36"/>]]></find>
+			<with><![CDATA[<font name="font_s" filename="winre-regular.ttf" size="32"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<font name="keylabel" filename="RobotoCondensed-Regular.ttf" size="64"/>]]></find>
+			<with><![CDATA[<font name="keylabel" filename="winre-regular.ttf" size="54"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<font name="keylabel-small" filename="RobotoCondensed-Regular.ttf" size="46"/>]]></find>
+			<with><![CDATA[<font name="keylabel-small" filename="winre-regular.ttf" size="38"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<font name="keylabel-longpress" filename="RobotoCondensed-Regular.ttf" size="32"/>]]></find>
+			<with><![CDATA[<font name="keylabel-longpress" filename="winre-regular.ttf" size="28"/>]]></with>
+		</replace>
+
+		<!-- Palette. -->
+		<replace count="1">
+			<find><![CDATA[<variable name="background_color" value="#1A1A1A"/>]]></find>
+			<with><![CDATA[<variable name="background_color" value="#000000"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="accent_color" value="#0090CA"/>]]></find>
+			<with><![CDATA[<variable name="accent_color" value="#0078D4"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="accent_color_semitransparent" value="#0090CA30"/>]]></find>
+			<with><![CDATA[<variable name="accent_color_semitransparent" value="#0078D440"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="text_color" value="#EEEEEE"/>]]></find>
+			<with><![CDATA[<variable name="text_color" value="#FFFFFF"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="text_button_color" value="#EEEEEE"/>]]></find>
+			<with><![CDATA[<variable name="text_button_color" value="#FFFFFF"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="text_success_color" value="#76FF03"/>]]></find>
+			<with><![CDATA[<variable name="text_success_color" value="#6CCB5F"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="text_fail_color" value="#FF0101"/>]]></find>
+			<with><![CDATA[<variable name="text_fail_color" value="#FF99A4"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="highlight_color" value="#1A1A1A80"/>]]></find>
+			<with><![CDATA[<variable name="highlight_color" value="#FFFFFF26"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="caps_highlight_color" value="#22222280"/>]]></find>
+			<with><![CDATA[<variable name="caps_highlight_color" value="#0078D466"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="semi_transparent" value="#00000099"/>]]></find>
+			<with><![CDATA[<variable name="semi_transparent" value="#000000CC"/>]]></with>
+		</replace>
+		<!-- warning / error / highlight are also the console's line colours. -->
+		<replace count="1">
+			<find><![CDATA[<variable name="warning" value="#F8F8A0"/>]]></find>
+			<with><![CDATA[<variable name="warning" value="#FCE100"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="error" value="#FF0101"/>]]></find>
+			<with><![CDATA[<variable name="error" value="#FF99A4"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="highlight" value="#0090CA"/>]]></find>
+			<with><![CDATA[<variable name="highlight" value="#60CDFF"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="fileselector_linecolor" value="#555555"/>]]></find>
+			<with><![CDATA[<variable name="fileselector_linecolor" value="#333333"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<variable name="fileselector_highlight_color" value="#555555"/>]]></find>
+			<with><![CDATA[<variable name="fileselector_highlight_color" value="#FFFFFF26"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<background color="#FFFF00FF" resource="cursor"/>]]></find>
+			<with><![CDATA[<background color="#FFFFFFFF" resource="cursor"/>]]></with>
+		</replace>
+
+		<!-- The page template: no blue header bar, no logo, no status row; a
+		     back arrow beside the Light title (as in Windows Settings) and a
+		     flat black navigation bar with line glyphs. -->
+		<element count="1">
+			<start><![CDATA[<template name="page">]]></start>
+			<end><![CDATA[</template>]]></end>
+			<with><![CDATA[<template name="page">
+			<background color="%background_color%"/>
+
+			<button>
+				<condition var1="tw_busy" var2="0"/>
+				<placement x="0" y="%winre_hdr_hit_y%" w="%winre_hdr_hit_w%" h="%winre_hdr_hit_h%"/>
+				<fill color="%transparent%"/>
+				<highlight color="%highlight_color%"/>
+				<action function="key">back</action>
+			</button>
+
+			<image>
+				<condition var1="tw_busy" var2="0"/>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_hdr_back_x%" y="%winre_hdr_back_y%" placement="4"/>
+			</image>
+
+			<text color="%text_fail_color%">
+				<condition var1="tw_simulate_actions" var2="1"/>
+				<font resource="winre_small"/>
+				<placement x="%indent_right%" y="%row1_header_y%" placement="1"/>
+				<text>Simulating actions</text>
+			</text>
+
+			<fill color="%background_color%">
+				<condition var1="tw_busy" var2="0"/>
+				<placement x="0" y="%navbar_y%" w="%screen_width%" h="%navbar_height%"/>
+			</fill>
+
+			<button>
+				<condition var1="tw_samsung_navbar" op="!=" var2="1"/>
+				<condition var1="tw_busy" var2="0"/>
+				<placement x="%back_button_x%" y="%navbar_btn_y%" placement="4"/>
+				<image resource="back"/>
+				<action function="key">back</action>
+			</button>
+
+			<button>
+				<condition var1="tw_samsung_navbar" op="=" var2="1"/>
+				<condition var1="tw_busy" var2="0"/>
+				<placement x="%back_button_x%" y="%navbar_btn_y%" placement="4"/>
+				<image resource="console"/>
+				<action function="overlay">slideout</action>
+			</button>
+
+			<button>
+				<condition var1="tw_busy" var2="0"/>
+				<placement x="%center_x%" y="%navbar_btn_y%" placement="4"/>
+				<image resource="home"/>
+				<action function="key">home</action>
+			</button>
+
+			<button>
+				<condition var1="tw_samsung_navbar" op="!=" var2="1"/>
+				<condition var1="tw_busy" var2="0"/>
+				<placement x="%console_button_x%" y="%navbar_btn_y%" placement="4"/>
+				<image resource="console"/>
+				<action function="overlay">slideout</action>
+			</button>
+
+			<button>
+				<condition var1="tw_samsung_navbar" op="=" var2="1"/>
+				<condition var1="tw_busy" var2="0"/>
+				<placement x="%console_button_x%" y="%navbar_btn_y%" placement="4"/>
+				<image resource="back"/>
+				<action function="key">back</action>
+			</button>
+
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</template>]]></with>
+		</element>
+
+		<!-- Tab bars (backup, settings): a quiet dark band instead of blue; the
+		     stock white underline still marks the current tab. -->
+		<replace count="2">
+			<find><![CDATA[<fill color="%accent_color%">]]></find>
+			<with><![CDATA[<fill color="%winre_tabbar%">]]></with>
+		</replace>
+
+		<!-- Operation pages (flash, backup, restore, file actions, decrypt): no
+		     scrolling log. While TWRP works the gears turn where the log was;
+		     afterwards one link opens the log in the console overlay. -->
+		<element count="1">
+			<start><![CDATA[<template name="console">]]></start>
+			<end><![CDATA[</template>]]></end>
+			<with><![CDATA[<template name="console">
+			<animation>
+				<condition var1="tw_busy" var2="1"/>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_console_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
+				<loop frame="1"/>
+			</animation>
+
+			<button>
+				<condition var1="tw_busy" var2="0"/>
+				<placement x="%indent%" y="%winre_details_y%" w="%content_width%" h="%winre_details_h%"/>
+				<fill color="%transparent%"/>
+				<highlight color="%highlight_color%"/>
+				<font resource="font_m" color="%winre_accent_text%"/>
+				<text>Show details</text>
+				<action function="overlay">slideout</action>
+			</button>
+		</template>]]></with>
+		</element>
+
+		<!-- Keyboards: dark keys, white labels, Windows-blue modifier highlight. -->
+		<replace count="3">
+			<find><![CDATA[<background color="#111111"/>]]></find>
+			<with><![CDATA[<background color="#000000"/>]]></with>
+		</replace>
+		<replace count="3">
+			<find><![CDATA[<key-alphanumeric color="#111111" font="keylabel" textcolor="#EEEEEE"/>]]></find>
+			<with><![CDATA[<key-alphanumeric color="#2B2B2B" font="keylabel" textcolor="#FFFFFF"/>]]></with>
+		</replace>
+		<replace count="3">
+			<find><![CDATA[<key-other color="#111111" font="keylabel-small" textcolor="#5b5b5bff"/>]]></find>
+			<with><![CDATA[<key-other color="#1F1F1F" font="keylabel-small" textcolor="#FFFFFF"/>]]></with>
+		</replace>
+		<replace count="3">
+			<find><![CDATA[<longpress font="keylabel-longpress" textcolor="#5b5b5bff" x="12" y="0"/>]]></find>
+			<with><![CDATA[<longpress font="keylabel-longpress" textcolor="#9A9A9A" x="12" y="0"/>]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<ctrlhighlight color="#0090CA80"/>]]></find>
+			<with><![CDATA[<ctrlhighlight color="#0078D480"/>]]></with>
+		</replace>
+	</file>
+
+	<file name="portrait.xml">
+		<!-- Hand these names to winre.xml. -->
+		<replace count="1">
+			<find><![CDATA[<page name="main">]]></find>
+			<with><![CDATA[<page name="twrp_main">]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<page name="lock">]]></find>
+			<with><![CDATA[<page name="twrp_lock">]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<page name="singleaction_page">]]></find>
+			<with><![CDATA[<page name="twrp_singleaction_page">]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<page name="action_page">]]></find>
+			<with><![CDATA[<page name="twrp_action_page">]]></with>
+		</replace>
+		<replace count="1">
+			<find><![CDATA[<page name="action_complete">]]></find>
+			<with><![CDATA[<page name="twrp_action_complete">]]></with>
+		</replace>
+
+		<!-- The stock menu keeps working as "Full TWRP interface"; every stock
+		     reference to it follows the rename, while stock references to
+		     'main' land on the WinRE home screen. -->
+		<word count="9">
+			<find>main2</find>
+			<with>twrp_main2</with>
+		</word>
+		<!-- The stock menu had no back/home handlers (it was home); now both
+		     lead back to WinRE. -->
+		<replace count="1">
+			<find><![CDATA[<page name="twrp_main2">]]></find>
+			<with><![CDATA[<page name="twrp_main2">
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+
+			<action>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+]]></with>
+		</replace>
+
+		<!-- The accent as text (dialog lines, list headers, the selected list
+		     row) uses the readable light accent rather than #0078D4 on black. -->
+		<replace count="1">
+			<find><![CDATA[<font resource="font_m" color="%accent_color%"/>]]></find>
+			<with><![CDATA[<font resource="font_m" color="%winre_accent_text%"/>]]></with>
+		</replace>
+		<replace count="4">
+			<find><![CDATA[highlightcolor="%accent_color%"]]></find>
+			<with><![CDATA[highlightcolor="%winre_accent_text%"]]></with>
+		</replace>
+		<replace count="4">
+			<find><![CDATA[textcolor="%accent_color%"]]></find>
+			<with><![CDATA[textcolor="%winre_accent_text%"]]></with>
+		</replace>
+	</file>
+</reskin>

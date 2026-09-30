@@ -25,8 +25,8 @@ public sealed partial class ImagePage : Page, IWizardStep
         AccountName.Text = AppServices.Unattend.Username;
         if (AppServices.Toolset.LoadFirmwareCatalog() is { } catalog)
         {
-            MediaHint.Text = $"Use Windows 11 ARM64 media with build {catalog.SupportedBuilds}. The phone's firmware starts one exact "
-                + "Windows build, so any other build can't boot yet. Validated with IoT Enterprise 23H2.";
+            MediaHint.Text = $"Any Windows 11 ARM64 image can be installed. Builds with a matching UEFI are validated: {catalog.SupportedBuilds} "
+                + "(IoT Enterprise 23H2). Others get the UEFI for the nearest build and may stop at the Samsung logo.";
         }
         UpdateProfile();
         Validate();
@@ -160,7 +160,7 @@ public sealed partial class ImagePage : Page, IWizardStep
             if (!cts.IsCancellationRequested)
             {
                 ExtractProgress.Visibility = Visibility.Collapsed;
-                ExtractText.Text = e.Message;
+                ExtractText.Text = AppServices.Redact(e.Message);
             }
         }
     }

@@ -68,11 +68,15 @@ holds: every required item is `Ready`; optional ones (the Heimdall fallback) nev
   exists and matches the current builder.
 - **UEFI and drivers** — `ReleaseClient` reads the latest release of the
   configured repository and keeps an asset only if it matches `SHA256SUMS` (a
-  release without it is refused). `drivers.zip` is extracted with an
-  archive-escape guard. A local build folder (`UseBuildFolder`) takes precedence;
-  it imports the newest valid `*uefi*.img` and only *built* driver packages (an
-  `.inf` next to a `.sys`). `tools/release/make-payload.ps1` produces the matching
-  release assets.
+  release without it is refused). When the release has a `firmware.json`, the
+  UEFI download takes the whole firmware catalog: the catalog plus every image it
+  lists, each checked against `SHA256SUMS` and then against the catalog's own
+  SHA-256, staged beside the payload and swapped in only once all of them pass
+  (a release with just `uefi.img` is still understood). `drivers.zip` is
+  extracted with an archive-escape guard. A local build folder (`UseBuildFolder`)
+  takes precedence; it imports its `firmware.json` catalog (or the newest valid
+  `*uefi*.img`) and only *built* driver packages (an `.inf` next to a `.sys`).
+  `tools/release/make-payload.ps1` produces the matching release assets.
 - **Download-mode driver** — `DownloadModeDriver` reads the USB enumeration
   key for `VID_04E8&PID_685D`. It matters only for the optional Heimdall
   fallback, which needs Zadig to bind WinUSB; the built-in flasher does not.
@@ -90,14 +94,35 @@ Each `StageDefinition` has an `Availability`:
   verifies the result.
 - `Experimental` — automated and unit-tested, but not yet validated end to end
   on the reference device. The installer runs these only when the user opts in
-  with *Run experimental steps* on the Install page.
+  with *Run experimental steps* on the Install page (the switch only shows while
+  some stage is experimental). Every automated stage has been validated end to
+  end on the reference phone, so none is experimental today.
 - `NotImplemented` — planned; the installer stops before it.
 
-`InstallState` (persisted as JSON under `%LOCALAPPDATA%\S9WoaInstaller`) records
+`InstallState` (persisted as JSON in the data folder, see below) records
 per-stage status so an install can resume. When you finish automating a stage,
 add coverage in the Core tests and move it from `Experimental` to `Ready` once it
 is validated on hardware. Wiring for running a stage lives in
 `Pages/InstallPage.xaml.cs` (`RunStageAsync`).
+
+### Data folder and privacy
+
+State, `toolset.json`, logs, the toolset payload and phone backups live in
+`%LOCALAPPDATA%\S9WoaInstaller`, unless a folder named `data` sits next to
+`S9WoaInstaller.exe`: then the installer is portable and keeps all of it there
+(`InstallState.ResolveDirectory`). Put adb, Heimdall and Zadig in the app's
+`tools\platform-tools`, `tools\heimdall` and `tools\zadig` folders and the whole
+installer runs from one folder.
+
+Logs and on-screen text go through `Redactor` (`AppServices.Redact`), so a log
+can be attached to an issue and the installer can be screen-recorded as it is.
+Every serial adb lists (and the one remembered in the state) is replaced by
+`phone-` plus 8 hex digits of its SHA-256, the Windows user folder by
+`%USERPROFILE%`, and this PC's own Windows version (the full version with UBR,
+the build lab string, and the version line of DISM's banner) by `(hidden)`: the
+PC may run a preview or internal build. The This PC check only says whether the
+Windows version is supported. Backups go to `backups\phone-<hash>`, so no path shows the
+serial either; a backup an earlier version made in `backups\<serial>` is still used.
 
 ## Deploy engine
 
@@ -105,9 +130,35 @@ is validated on hardware. Wiring for running a stage lives in
 seams so it is unit-tested without hardware:
 
 - `TwrpClient` — adb-over-TWRP primitives: list partitions by name, read size,
-  `dd`, sha256, push/pull. Binary payloads always move as files on the SD card,
-  never as captured stdout, so nothing is corrupted by text decoding.
+  `dd`, sha256, push/pull. Binary payloads always move as files staged in TWRP's RAM (`/tmp`),
+  never as captured stdout, so nothing is corrupted by text decoding. It also
+  breaks the ntfs-3g FUSE self-deadlock from the host (`EnsureResponsiveAsync` /
+  `BreakNtfsDeadlockAsync`): when a shell hangs it enumerates `/proc` over the
+  adb sync service (which keeps answering when the shell does not), finds the
+  wedged `mount.ntfs` daemon, pins its OOM score and trips the OOM killer with
+  sysrq `f` — the fallback for a stock TWRP without the baked-in watchdog.
 - `PartitionMap` — the validated star2lte partition names.
+- `BootRouteService` — makes the next restart a real Windows start. It clears the
+  Android bootloader control block in MISC (`boot-recovery`), acknowledges a
+  `RECOVERY_PENDING` watchdog record (`rwd1_ack.ko`), then reads the two
+  **retained startup records** with `rwd1_evidence_reader.ko` — RWD1 (64 bytes at
+  `0xFED13D80`) and P3/SMP1 (128 bytes at `0xFED13E80`) — and zeroes whichever is
+  not all zero (`rwd1_clear_poc.ko`, token-gated, and `pram_smp_clear_poc.ko`),
+  then reads both back. The previous start is over by definition, so anything left
+  is stale. The records are judged on **every byte**: the firmware's P3 startup
+  gate halts, with the watchdog disabled, on anything but an all-zero record (the
+  phone then sits on the Samsung logo for good), and the record that hung the
+  reference phone had a zero first word. Stock Android, Download mode, a power
+  loss and a forced reset all leave such bytes; a left-over RWD1 record sends the
+  next start back to TWRP. The first-boot stage runs this before every attempt,
+  refuses to restart when the records do not read back clear, and saves what it
+  found to `logs\startup-records-*.txt`.
+- `Gpt` / `GptTypeService` — sets the SYSTEM partition's GPT type to the EFI
+  system partition type (stock Android flashes it as basic data), patching both
+  GPT copies with their CRCs, saving the originals to the backup folder and
+  verifying the read-back. Together with FAT32 CACHE/SYSTEM ESPs (4096-byte
+  sectors) and a BCD whose devices are GPT-qualified (CACHE for the boot manager,
+  USERDATA for the loader), the partitions match the reference phone exactly.
 - `BackupService` — verified identity backup (efs and friends) to the PC, with a
   device/PC sha256 cross-check and a JSON manifest. Refuses if `efs` is missing.
 - `TwrpFlasher` — `ITwrpFlasher`, `TwrpFlashService` (uses the first available
@@ -119,9 +170,22 @@ seams so it is unit-tested without hardware:
   open-source Heimdall and Thor projects. `SerialOdinTransport` carries it over
   the COM port the Samsung USB driver creates for Download mode, so no driver is
   replaced; `DownloadModePort` finds that port (a present `VID_04E8&PID_685D`
-  instance). `OdinTwrpFlasher` looks up RECOVERY in the phone's PIT by name,
-  flashes TWRP and leaves the phone in Download mode for the TWRP key combo.
-  `Pit` parses the partition table. A simulated bootloader covers it in tests.
+  instance). `OdinTwrpFlasher` looks up RECOVERY and BOOT in the phone's PIT by
+  name, writes TWRP to both in one session (as Samsung's firmware packages do) and
+  restarts the phone, which then starts TWRP from BOOT by itself: Android never
+  runs, so it cannot put its stock recovery back, and the UEFI stage replaces BOOT
+  later. BOOT (55 MiB) is smaller than RECOVERY (65 MiB), so BOOT gets the image
+  without the zero padding a full-partition image (such as a prebuilt WinRE-look
+  recovery) carries past its sections; an image still too large for BOOT is only
+  flashed to RECOVERY and the phone stays in Download mode. (The Android
+  `boot-recovery` request in MISC is not an option: this
+  phone's Download mode fails the session with -1, or stops answering, when MISC
+  is written.)
+  `Pit` parses the partition table. `FlashPartition` refuses a raw (non-sparse)
+  image for `USERDATA`: the bootloader writes that partition through its
+  filesystem path and rejects a raw image at session close ("Invalid Magic Code!
+  0x0", eMMC write −1), so it must be an Android sparse image. A simulated
+  bootloader covers it in tests.
 - `TransferService` — writes prepared images through TWRP. For the raw Windows
   volume it reads the NTFS `$Bitmap` (`Image/NtfsAllocation`) and writes only the
   MiBs that hold used clusters (plus the first and last MiB, for the boot sector
@@ -145,8 +209,8 @@ seams so it is unit-tested without hardware:
 
 The installer does not flash the raw TWRP the user downloads; it re-skins that
 image, on the user's own PC, into a Windows-Recovery-Environment look and flashes
-that. `WinReTwrpBuilder` is the whole build and is deterministic (same base image
-and fonts → same bytes):
+that. `WinReTwrpBuilder` is the whole build and is deterministic (same base image,
+fonts and gear GIF → same bytes):
 
 - it verifies the base is exactly the official `twrp-3.7.0_9-0-star2lte.img` by
   SHA-256 (and accepts a zero-padded RECOVERY dump of it);
@@ -157,27 +221,67 @@ and fonts → same bytes):
   alone" framing the kernel expects;
 - `PowerOffRoutePatch` applies a four-byte, hash-and-pattern-gated patch to the
   kernel so USB-connected "Turn off" powers the phone down through Samsung's hook;
-- `WinReTheme` reskins the stock theme (black/white, Windows-blue accent, Segoe
-  fonts) and includes the embedded `winre.xml`; the WinRE pages, the `/sbin`
-  scripts, the procedural art and the two GPL kernel modules are embedded from
-  `tools/twrp-winre`, and the Segoe faces are copied from the builder's own
+- `WinReTheme` applies the committed `tools/twrp-winre/theme/reskin.xml` to the
+  stock `ui.xml`/`portrait.xml` (palette, Segoe fonts, a page template with a back
+  arrow and no blue header or logo, gears instead of the log on operation pages,
+  dark keyboards, and the renames that hand `lock`, `singleaction_page`,
+  `action_page` and `action_complete` to `winre.xml`), every one of the 57 stock
+  bitmaps is replaced by original art (`assets/stock`), and the WinRE pages,
+  `/sbin` scripts, icons, gears and the GPL kernel modules are embedded from
+  `tools/twrp-winre`; the Segoe faces are copied from the builder's own
   `%WINDIR%\Fonts` (never redistributed);
+- it bakes in four GPL kernel modules (`rwd1_ack`, `rwd1_evidence_reader`,
+  `rwd1_clear_poc`, `pram_smp_clear_poc`) under `/sbin/s9woa`, so the recovery and
+  its Troubleshoot actions can read and clear the retained startup records on the
+  phone. It also ships `/sbin/rebootsystem.sh`, the hook TWRP runs before every
+  restart into the system (the WinRE *Continue* tile, the stock Reboot menu, ORS):
+  it clears the MISC request and the startup records, so a phone that landed in
+  recovery after a power loss or a failed start does not stop at the Samsung logo
+  on the way back to Windows. And it registers `winre-ntfs-watchdog.sh` as an **init service** (in
+  `init.recovery.service.rc`). The watchdog has to run from init, not a TWRP boot
+  script, because the ntfs-3g FUSE self-deadlock strikes while the recovery binary
+  is still mounting `/data` — before any boot script runs and with adb/MTP still
+  down; started at init it is already watching and breaks the deadlock (OOM-kills
+  the wedged `mount.ntfs`) with no host attached;
+- if the user supplied their own copy of Microsoft's UpdateOS gear animation,
+  `GifDecoder` / `GearFrames` render its frames white-on-black into the image
+  (with the animation speed taken from the GIF's frame delays) instead of the
+  procedural gears; the GIF and its frames never leave the image being built;
 - it asserts the output fits RECOVERY and that the device-tree, second stage and
   kernel (bar the patch) are unchanged.
 
 `ToolsetManager` builds this when the user provides the official TWRP (chosen on the
 Setup page, found in a build folder, or already chosen and rebuilt by *Set up
-automatically* after an installer update); `Detect`
-reports the TWRP tool Ready only when the built WinRE image exists and its
-recorded builder version and base hash still match (a prebuilt WinRE image the
-user supplies directly is accepted as-is with a note), and the flashers use that
-built image. While the installer writes the phone, `TransferService`,
-`BootFilesService` and the UEFI step write a small `/tmp/s9woa/status` file
-(`WinReStatus`) that the recovery's `winre-statuswatch.sh` turns into an
-"Installing Windows" screen; the file is refreshed at most every ~5 s and removed
-when writing finishes. The installer also deletes a stale `TWRP/theme/ui.zip`
-over adb so it cannot override the baked theme, and never uses `twrp`/ORS on any
-hot path.
+automatically* after an installer update). A `*GearAnimation*.gif` in the build
+folder (for example `twrp\UpdateOS-GearAnimation.gif`) is copied into the payload
+and triggers a rebuild. `Detect` reports the TWRP tool Ready only when the built
+WinRE image exists and its recorded builder version, base hash and gears (built-in,
+or the GIF's hash) still match, and its detail line says which gears it carries;
+a prebuilt WinRE image the user supplies directly is accepted as-is. When it is a
+build of this installer (its `twres/winre-build.txt` stamp names the builder),
+the detail says whether that is the current builder; a different prebuilt in the
+build folder replaces the previous prebuilt (never a build from the official TWRP).
+The flashers use the built image.
+
+The host side of the first boot pushes the same four modules from the toolset's
+`twrp-modules` folder (`EnsureTwrpModules`): a build folder may supply some of them,
+and every one it does not is filled in from the copies embedded in the installer,
+so the startup-record clearers are always there even when the phone runs a
+prebuilt or older recovery.
+
+While the installer writes the phone, `TransferService`, `BootFilesService` and the
+UEFI step keep a small `/tmp/s9woa/status` file (`WinReStatus`: phase, label,
+percent, a detail line) current. `TwrpClient.QueueInstallStatus` appends the write
+to the next shell command the installer runs anyway (each chunk's `dd`), keeping
+that command's exit code, so the percentage costs no extra round trip. The
+recovery's `winre-statuswatch.sh` raises the "Installing Windows" screen with one
+`twrp changepage=` (the only ORS command TWRP serves without flashing its
+`singleaction_page`), copies the values into Android properties with `setprop`
+(the screen reads `%property.s9woa.*%` and binds its progress bar to
+`property.s9woa.pct`, which TWRP re-reads on every draw), and clears it with one
+more `changepage` when the file goes away. The installer also deletes a stale
+`TWRP/theme/ui.zip` over adb so it cannot override the baked theme, and never uses
+`twrp`/ORS on any hot path.
 
 `Image/VhdxImageBuilder` runs the whole host build: it scripts diskpart to create
 an ESP + MSR + NTFS layout in a VHDX, applies the edition, injects drivers, runs
@@ -187,10 +291,16 @@ retargets the BCD, then exports the NTFS volume to `work\out\windows.img`
 `work\out\esp`. Those two outputs are exactly what the transfer stage writes to
 the phone.
 
-- `Image/UnattendXml` — a clean-room generator of the standard `oobeSystem`
-  answer file: a local administrator account, skipped EULA/privacy/MSA/wireless
+- `Image/UnattendXml` — a clean-room generator of the standard answer file.
+  `oobeSystem`: a local administrator account, skipped EULA/privacy/MSA/wireless
   screens, and locale/time-zone/computer-name. This is what makes OOBE finish to
-  the desktop without user input.
+  the desktop without user input. `specialize`: display scaling
+  (`UnattendOptions.Dpi`, default 275 DPI ≈ 286%; the phone's panel reports no
+  physical size, so Windows would otherwise start at 100%). The unattend
+  `Display/DPI` setting is no longer honoured, so `RunSynchronous` commands write
+  `LogPixels` and `Win8DpiScaling` (what Settings' custom scaling writes) into the
+  default user profile, which the OOBE account is copied from, and into
+  `.DEFAULT` for the sign-in screen.
 
 The validated device targets are in `Deploy/PartitionMap`: Windows to
 `USERDATA`, UEFI to `BOOT`, TWRP to `RECOVERY`, and boot files to the FAT EFI
@@ -220,6 +330,9 @@ truth. The flow is:
 2. `tools/release/import_sources.py` copies only the paths named in
    `release/import-manifest.json` into this tree. Nothing outside the manifest
    is ever published (`global_exclude` drops logs, receipts, provenance, etc.).
+   The installer, `tools/twrp-winre`, `tools/release` and
+   `drivers/Exynos9810Hsi2c` (the sources its released binary was built from,
+   apart from line endings) are not imported: they are maintained in this repository.
 3. During import, two transforms keep public edits reproducible:
    - **`resolve_macros`** — a unifdef-like resolver that removes dead
      `#if`/`#ifdef` branches for named flags (used to drop diagnostic/hook code

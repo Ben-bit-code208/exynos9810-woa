@@ -89,11 +89,55 @@ public sealed class ToolsetManager
     public string TwrpWinrePayload => Path.Combine(Paths.PayloadDirectory, "twrp-winre-star2lte.img");
     private string TwrpWinreInfoPath => TwrpWinrePayload + ".json";
 
+    /// <summary>
+    /// The user's own copy of Microsoft's UpdateOS gear animation, if they supplied one (from the
+    /// build folder, or dropped into the payload folder). Like the Segoe fonts it is only ever used
+    /// to build the recovery on this PC: its frames replace the built-in gears in the image.
+    /// </summary>
+    public string TwrpGearsPayload => Path.Combine(Paths.PayloadDirectory, "UpdateOS-GearAnimation.gif");
+
+    /// <summary>The gear GIF the next recovery build uses, or null for the built-in gears.</summary>
+    public string? TwrpGearsGif()
+    {
+        if (File.Exists(TwrpGearsPayload))
+        {
+            return TwrpGearsPayload;
+        }
+        return Directory.Exists(Paths.PayloadDirectory)
+            ? Directory.EnumerateFiles(Paths.PayloadDirectory, "*GearAnimation*.gif")
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault()
+            : null;
+    }
+
+    private string CurrentGearsId() =>
+        TwrpGearsGif() is { } gif ? WinReTwrpBuilder.GearsId(File.ReadAllBytes(gif)) : WinReTwrpBuilder.BuiltinGears;
+
     /// <summary>UEFI images with their <c>firmware.json</c> (one build per supported Windows build).</summary>
     public string UefiCatalogDirectory => Path.Combine(Paths.PayloadDirectory, "uefi");
 
     /// <summary>Kernel modules for the TWRP kernel (e.g. <c>rwd1_ack.ko</c>, which clears the recovery record).</summary>
     public string TwrpModulesDirectory => Path.Combine(Paths.PayloadDirectory, "twrp-modules");
+
+    /// <summary>
+    /// <see cref="TwrpModulesDirectory"/>, completed with the installer's own copy of every module a
+    /// build folder did not supply (a build folder that holds only some of them - e.g. the reader
+    /// and the acknowledger - must not leave the startup-record clearers out), so the recovery and
+    /// the first boot always have all of them. Modules the build folder did supply are kept.
+    /// </summary>
+    public string EnsureTwrpModules()
+    {
+        Directory.CreateDirectory(TwrpModulesDirectory);
+        foreach (var (name, bytes) in Twrp.WinReResources.Folder("modules").Where(kv => kv.Key.EndsWith(".ko", StringComparison.Ordinal)))
+        {
+            var path = Path.Combine(TwrpModulesDirectory, name);
+            if (!File.Exists(path))
+            {
+                File.WriteAllBytes(path, bytes);
+            }
+        }
+        return TwrpModulesDirectory;
+    }
 
     public FirmwareCatalog? LoadFirmwareCatalog() => FirmwareCatalog.Load(UefiCatalogDirectory);
 
@@ -173,8 +217,9 @@ public sealed class ToolsetManager
     /// <summary>
     /// The installer flashes a WinRE-look recovery it builds from the chosen TWRP, not the raw
     /// TWRP. This is Ready only when that build exists and is current: for a freshly built image
-    /// the recorded builder version and base hash must match, and a prebuilt WinRE image the user
-    /// supplied directly is accepted as-is.
+    /// the recorded builder version, base hash and gears (built-in, or the hash of the user's
+    /// UpdateOS GIF) must match, and a prebuilt WinRE image the user supplied directly is
+    /// accepted as-is.
     /// </summary>
     private ToolStatus DetectTwrp()
     {
@@ -187,6 +232,14 @@ public sealed class ToolsetManager
         }
         if (info.Source == WinReRecoveryInfo.Prebuilt)
         {
+            // A prebuilt image this installer's current builder made has everything a fresh build
+            // has; anything else (an older builder, the research tool) is flashed as it is.
+            if (info.Builder == WinReTwrpBuilder.BuilderVersion)
+            {
+                return ToolStatus.Ready(TwrpWinrePayload, info.Gears == WinReTwrpBuilder.BuiltinGears
+                    ? $"Prebuilt WinRE recovery from this installer's current builder ({info.Builder}), with the built-in gears."
+                    : $"Prebuilt WinRE recovery from this installer's current builder ({info.Builder}), with the UpdateOS gears.");
+            }
             return ToolStatus.Ready(TwrpWinrePayload,
                 "Using a prebuilt WinRE-look recovery as-is. Choose the official twrp-3.7.0_9-0-star2lte.img to get this "
                 + "installer's recovery (repair tools and the install progress screen).");
@@ -195,7 +248,15 @@ public sealed class ToolsetManager
         {
             return ToolStatus.Missing("The WinRE recovery is out of date for this installer or TWRP image. Press Set up automatically to rebuild it.");
         }
-        return ToolStatus.Ready(TwrpWinrePayload, "WinRE recovery built from TWRP 3.7.0_9-0.");
+        if (info.Gears != CurrentGearsId())
+        {
+            return ToolStatus.Missing(TwrpGearsGif() is null
+                ? "The WinRE recovery still has the UpdateOS gears, but that GIF is gone. Press Set up automatically to rebuild it."
+                : "The UpdateOS gear animation changed since the WinRE recovery was built. Press Set up automatically to rebuild it.");
+        }
+        return ToolStatus.Ready(TwrpWinrePayload, info.Gears == WinReTwrpBuilder.BuiltinGears
+            ? "WinRE recovery built from TWRP 3.7.0_9-0, with the built-in gears."
+            : "WinRE recovery built from TWRP 3.7.0_9-0, with the UpdateOS gears from your file.");
     }
 
     /// <summary>Builds (or accepts) the WinRE recovery from the raw TWRP in the payload.</summary>
@@ -211,22 +272,30 @@ public sealed class ToolsetManager
             switch (kind)
             {
                 case BaseImageKind.OfficialTwrp:
-                    log?.Report("Building the WinRE recovery from TWRP 3.7.0_9-0 (about 20 seconds)...");
-                    var modules = Directory.Exists(TwrpModulesDirectory)
-                                  && Directory.EnumerateFiles(TwrpModulesDirectory, "*.ko").Any()
-                        ? TwrpModulesDirectory
-                        : null;
-                    var info = _winre.Build(TwrpPayload, TwrpWinrePayload, modules, log);
+                {
+                    var gears = TwrpGearsGif();
+                    log?.Report(gears is null
+                        ? "Building the WinRE recovery from TWRP 3.7.0_9-0 (about 20 seconds)..."
+                        : $"Building the WinRE recovery from TWRP 3.7.0_9-0 with the UpdateOS gears from {Path.GetFileName(gears)} (about 20 seconds)...");
+                    var modules = EnsureTwrpModules();
+                    var info = _winre.Build(TwrpPayload, TwrpWinrePayload,
+                        Directory.EnumerateFiles(modules, "*.ko").Any() ? modules : null, gears, log);
                     info.Save(TwrpWinreInfoPath);
                     return Detect(Tools.Twrp);
+                }
 
                 case BaseImageKind.WinReBuild:
-                    log?.Report("The chosen image is already a WinRE recovery; using it as-is.");
+                    var stamp = _winre.ReadStamp(TwrpPayload);
+                    log?.Report(stamp is null
+                        ? "The chosen image is already a WinRE recovery; using it as-is."
+                        : $"The chosen image is a WinRE recovery built by this installer ({stamp.Builder}); using it as-is.");
                     Directory.CreateDirectory(Path.GetDirectoryName(TwrpWinrePayload)!);
                     File.Copy(TwrpPayload, TwrpWinrePayload, overwrite: true);
                     new WinReRecoveryInfo
                     {
-                        Builder = WinReRecoveryInfo.Prebuilt,
+                        Builder = stamp?.Builder ?? WinReRecoveryInfo.Prebuilt,
+                        BaseSha256 = stamp?.BaseSha256 ?? "",
+                        Gears = stamp?.Gears ?? "",
                         Source = WinReRecoveryInfo.Prebuilt,
                         Sha256 = Sha256File(TwrpWinrePayload),
                     }.Save(TwrpWinreInfoPath);
@@ -292,7 +361,43 @@ public sealed class ToolsetManager
                     break;
             }
         }
-        return prebuilt is not null && Detect(Tools.Twrp).State != ToolState.Ready ? prebuilt : null;
+        // A prebuilt image never displaces a recovery built from the official TWRP, but it does
+        // replace a missing one or another prebuilt (e.g. a newer build dropped into the folder).
+        return prebuilt is not null && (Detect(Tools.Twrp).State != ToolState.Ready
+            || WinReRecoveryInfo.Load(TwrpWinreInfoPath)?.Source == WinReRecoveryInfo.Prebuilt) ? prebuilt : null;
+    }
+
+    /// <summary>
+    /// Copies the user's UpdateOS gear animation (<c>*GearAnimation*.gif</c>, e.g.
+    /// <c>twrp\UpdateOS-GearAnimation.gif</c>) from a build folder into the payload, if it is a
+    /// readable GIF and differs from the one already there. Returns true when it changed.
+    /// </summary>
+    private bool ImportGearsFromFolder(string folder, EnumerationOptions options, IProgress<string>? log)
+    {
+        foreach (var gif in Directory.EnumerateFiles(folder, "*GearAnimation*.gif", options)
+                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+        {
+            byte[] bytes;
+            try
+            {
+                bytes = File.ReadAllBytes(gif);
+                GifDecoder.Decode(bytes);
+            }
+            catch (Exception e) when (e is InvalidDataException or IOException)
+            {
+                log?.Report($"Skipping {gif}: not a readable GIF ({e.Message}).");
+                continue;
+            }
+            if (File.Exists(TwrpGearsPayload) && File.ReadAllBytes(TwrpGearsPayload).AsSpan().SequenceEqual(bytes))
+            {
+                return false;
+            }
+            Directory.CreateDirectory(Paths.PayloadDirectory);
+            File.WriteAllBytes(TwrpGearsPayload, bytes);
+            log?.Report($"Using the UpdateOS gear animation {gif} for the WinRE recovery.");
+            return true;
+        }
+        return false;
     }
 
     private static ToolStatus? Payload(params (string File, long Max)[] candidates)
@@ -481,10 +586,16 @@ public sealed class ToolsetManager
             log?.Report($"Using {modules.Count} TWRP kernel module(s): {string.Join(", ", modules.Select(Path.GetFileName))}");
         }
 
-        // A TWRP image in the folder becomes the recovery's base; freshly imported modules also
-        // need a rebuild so the WinRE recovery carries them. Either way, build once.
+        // A TWRP image in the folder becomes the recovery's base; freshly imported modules or a
+        // new UpdateOS gear GIF also need a rebuild so the WinRE recovery carries them. Either
+        // way, build once.
         var rebuild = modules.Count > 0 && File.Exists(TwrpPayload)
             && WinReRecoveryInfo.Load(TwrpWinreInfoPath)?.Source != WinReRecoveryInfo.Prebuilt;
+        if (ImportGearsFromFolder(folder, options, log) && File.Exists(TwrpPayload)
+            && WinReRecoveryInfo.Load(TwrpWinreInfoPath)?.Source != WinReRecoveryInfo.Prebuilt)
+        {
+            rebuild = true;
+        }
         if (FindTwrpInFolder(folder, options) is { } twrpImage
             && !(File.Exists(TwrpPayload) && Sha256File(twrpImage) == TwrpBaseSha256()))
         {
@@ -565,6 +676,8 @@ public sealed class ToolsetManager
         var release = await _releases.GetLatestAsync(Config.ReleaseRepo, ct).ConfigureAwait(false);
         switch (id)
         {
+            case Tools.Uefi when release.Assets.Any(a => a.Name == FirmwareCatalog.FileName):
+                return await DownloadFirmwareCatalogAsync(release, log, ct).ConfigureAwait(false);
             case Tools.Uefi:
             {
                 var temp = UefiPayload + ".new";
@@ -601,6 +714,61 @@ public sealed class ToolsetManager
     }
 
     /// <summary>
+    /// Downloads a release's firmware catalog: <c>firmware.json</c> and every UEFI image it lists
+    /// (one per Windows build), each verified against the release's SHA256SUMS and then against the
+    /// catalog's own hash. The installed catalog is replaced only once the whole set is verified.
+    /// </summary>
+    private async Task<ToolStatus> DownloadFirmwareCatalogAsync(ReleaseInfo release, IProgress<string>? log, CancellationToken ct)
+    {
+        var staging = UefiCatalogDirectory + ".download";
+        if (Directory.Exists(staging))
+        {
+            Directory.Delete(staging, recursive: true);
+        }
+        Directory.CreateDirectory(staging);
+        try
+        {
+            await _releases.DownloadVerifiedAsync(release, FirmwareCatalog.FileName, Path.Combine(staging, FirmwareCatalog.FileName), log, ct)
+                .ConfigureAwait(false);
+            var catalog = FirmwareCatalog.Load(staging)!;
+            if (catalog.Images.Count == 0)
+            {
+                return new ToolStatus(ToolState.Error, $"Release {release.Tag}: {FirmwareCatalog.FileName} lists no UEFI images.");
+            }
+            foreach (var image in catalog.Images)
+            {
+                await _releases.DownloadVerifiedAsync(release, image.File, catalog.PathOf(image), log, ct).ConfigureAwait(false);
+                if (!catalog.Verify(image))
+                {
+                    return new ToolStatus(ToolState.Error, $"Release {release.Tag}: {image.File} does not match the SHA-256 in {FirmwareCatalog.FileName}.");
+                }
+                if (BootImage.ValidateUefi(catalog.PathOf(image)) is { } problem)
+                {
+                    return new ToolStatus(ToolState.Error, $"Release {release.Tag}: {image.File}: {problem}");
+                }
+            }
+            if (Directory.Exists(UefiCatalogDirectory))
+            {
+                Directory.Delete(UefiCatalogDirectory, recursive: true);
+            }
+            Directory.Move(staging, UefiCatalogDirectory);
+            log?.Report($"Using UEFI builds for Windows {catalog.SupportedBuilds} from release {release.Tag}.");
+            return Detect(Tools.Uefi);
+        }
+        catch (Exception e) when (e is InvalidDataException or System.Text.Json.JsonException)
+        {
+            return new ToolStatus(ToolState.Error, $"Release {release.Tag}: {FirmwareCatalog.FileName} is not valid: {e.Message}");
+        }
+        finally
+        {
+            if (Directory.Exists(staging))
+            {
+                Directory.Delete(staging, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
     /// Provides everything that can be provided without the user: winget programs
     /// and release payloads (unless a build folder is configured), and the WinRE recovery
     /// built from a TWRP image that was already chosen (for example after an installer
@@ -614,6 +782,13 @@ public sealed class ToolsetManager
         {
             // Off the caller's thread: importing can include building the WinRE recovery.
             await Task.Run(() => UseBuildFolder(folder, log), ct).ConfigureAwait(false);
+        }
+        if (Config.BuildFolder is { } gearsFolder && Directory.Exists(gearsFolder))
+        {
+            // A gear GIF placed in the build folder later still reaches the recovery: importing it
+            // makes the build stale, and the rebuild below picks it up.
+            var options = new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 2, IgnoreInaccessible = true };
+            await Task.Run(() => ImportGearsFromFolder(gearsFolder, options, log), ct).ConfigureAwait(false);
         }
         if (File.Exists(TwrpPayload) && Detect(Tools.Twrp).State != ToolState.Ready)
         {

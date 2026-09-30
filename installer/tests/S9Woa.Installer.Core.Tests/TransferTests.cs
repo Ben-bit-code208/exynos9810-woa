@@ -28,6 +28,7 @@ public class TransferTests
         public int Pushes { get; private set; }
         public int Hashes { get; private set; }
         public List<string> PushTargets { get; } = [];
+        public List<string> Shells { get; } = [];
 
         public Task<ProcessResult> RunAsync(string fileName, IReadOnlyList<string> arguments, TimeSpan timeout,
             CancellationToken cancellationToken = default)
@@ -41,6 +42,7 @@ public class TransferTests
                 return Ok("pushed");
             }
             var cmd = arguments[3];
+            Shells.Add(cmd);
             var dev = $"/dev/block/by-name/{PartitionName}";
             if (cmd.StartsWith("ls -l /dev/block/by-name", StringComparison.Ordinal))
             {
@@ -139,6 +141,65 @@ public class TransferTests
         {
             File.Delete(image);
         }
+    }
+
+    [Fact]
+    public async Task InstallStatusRidesOnTheChunkWritesWithNoExtraRoundTrips()
+    {
+        var image = Path.GetTempFileName();
+        try
+        {
+            var bytes = new byte[4 * Mib];
+            new Random(21).NextBytes(bytes);
+            await File.WriteAllBytesAsync(image, bytes);
+
+            var runner = new FakePartitionRunner("userdata", 6 * Mib);
+            var twrp = new TwrpClient(@"C:\adb.exe", "SER", runner);
+            await new TransferService(twrp).WriteRawImageAsync("userdata", image, new RawWriteOptions { ChunkMiB = 1 });
+            Assert.Equal(bytes, runner.Partition.AsSpan(0, 4 * (int)Mib).ToArray());
+
+            // Exactly the staging mkdir and the four chunk writes carry the status; no command
+            // exists only to update the phone's screen.
+            var carriers = runner.Shells.Where(c => c.Contains("s9r=$?", StringComparison.Ordinal)).ToList();
+            Assert.Equal(5, carriers.Count);
+            Assert.StartsWith("mkdir -p /tmp/s9woa", carriers[0], StringComparison.Ordinal);
+            Assert.All(carriers.Skip(1), c => Assert.StartsWith("dd if=", c, StringComparison.Ordinal));
+            Assert.All(carriers, c => Assert.EndsWith("exit $s9r", c, StringComparison.Ordinal));
+            Assert.DoesNotContain(runner.Shells, c => c.StartsWith("rm -rf", StringComparison.Ordinal) && c.Contains("s9r=$?", StringComparison.Ordinal));
+
+            var percents = carriers.Select(c => Status(c)["percent"]).ToList();
+            Assert.Equal(["0", "25", "50", "75", "100"], percents);
+            Assert.Equal("Copying Windows", Status(carriers[^1])["label"]);
+            Assert.StartsWith("100% complete", Status(carriers[^1])["detail"], StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(image);
+        }
+    }
+
+    [Fact]
+    public void StatusSuffixKeepsTheExitCodeAndWritesAtomically()
+    {
+        var suffix = TwrpClient.StatusSuffix(WinReStatus.BootFiles());
+        Assert.StartsWith("s9r=$?; ", suffix, StringComparison.Ordinal);
+        Assert.EndsWith("exit $s9r", suffix, StringComparison.Ordinal);
+        Assert.Contains("> /tmp/s9woa/status.tmp && mv -f /tmp/s9woa/status.tmp /tmp/s9woa/status", suffix, StringComparison.Ordinal);
+        Assert.Contains(">/dev/null 2>&1", suffix, StringComparison.Ordinal);
+        Assert.Equal("Writing boot files", Status("x; " + suffix)["label"]);
+
+        // Long values are cut to what an Android property holds.
+        var longLabel = new WinReStatus("x", new string('a', 200)).ToFileContents();
+        Assert.Contains("label=" + new string('a', WinReStatus.MaxValueBytes) + "\n", longLabel, StringComparison.Ordinal);
+    }
+
+    private static Dictionary<string, string> Status(string command)
+    {
+        var b64 = System.Text.RegularExpressions.Regex.Match(command, @"echo ([A-Za-z0-9+/=]+) \| base64 -d").Groups[1].Value;
+        return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(b64))
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Split('=', 2))
+            .ToDictionary(kv => kv[0], kv => kv[1]);
     }
 
     [Fact]

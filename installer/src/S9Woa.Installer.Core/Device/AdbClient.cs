@@ -21,11 +21,14 @@ public sealed partial class AdbClient
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
     private readonly IProcessRunner _runner;
+    private readonly Action<string>? _serialSeen;
 
-    public AdbClient(string adbPath, IProcessRunner runner)
+    /// <param name="serialSeen">Called with every listed device's serial before it is returned (the redactor uses it).</param>
+    public AdbClient(string adbPath, IProcessRunner runner, Action<string>? serialSeen = null)
     {
         AdbPath = adbPath;
         _runner = runner;
+        _serialSeen = serialSeen;
     }
 
     public string AdbPath { get; }
@@ -37,7 +40,12 @@ public sealed partial class AdbClient
         {
             throw new InvalidOperationException($"adb devices failed: {r.StdErr.Trim()}");
         }
-        return ParseDevices(r.StdOut);
+        var devices = ParseDevices(r.StdOut);
+        foreach (var device in devices)
+        {
+            _serialSeen?.Invoke(device.Serial);
+        }
+        return devices;
     }
 
     public async Task<IReadOnlyDictionary<string, string>> GetPropertiesAsync(string serial, CancellationToken ct = default)

@@ -44,6 +44,7 @@ public sealed partial class HostPage : Page, IWizardStep
         if (result is not null)
         {
             AppServices.WorkDirectory = Path.Combine(result.Path, "S9WoaInstaller");
+            AppServices.SaveState();
             Evaluate();
         }
     }

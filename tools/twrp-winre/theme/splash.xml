@@ -15,9 +15,11 @@
 	The gear frames are declared with no `size`, exactly as the stock
 	`indeterminate` animation is: TWRP loads winrecog001.png, winrecog002.png,
 	... until one fails to open, so the frame count lives in the asset generator
-	alone. retainaspect is required: this panel is 1440x2960 while the theme is
-	authored at 1080x1920, so an unqualified bitmap renders about 15.6% too tall
-	and the round gears come out oval.
+	(or, when the builder is given the user's own UpdateOS gear GIF, in that
+	GIF) alone, and so does the speed: winre_cogs_fps is set by the builder
+	from the frames it installed. retainaspect is required: this panel is
+	1440x2960 while the theme is authored at 1080x1920, so an unqualified
+	bitmap renders about 15.6% too tall and the round gears come out oval.
 -->
 <recovery>
 	<details>
@@ -44,7 +46,7 @@
 			<animation>
 				<placement x="%winre_cogs_x%" y="%winre_cogs_y%"/>
 				<resource name="winre_cogs"/>
-				<speed fps="24" render="8"/>
+				<speed fps="%winre_cogs_fps%" render="8"/>
 				<loop frame="1"/>
 			</animation>
 		</page>

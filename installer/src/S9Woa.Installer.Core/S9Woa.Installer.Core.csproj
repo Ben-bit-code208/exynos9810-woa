@@ -28,6 +28,9 @@
     <EmbeddedResource Include="..\..\..\tools\twrp-winre\assets\images\*.png">
       <Link>Twrp\Assets\images\%(Filename)%(Extension)</Link>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\..\..\tools\twrp-winre\assets\stock\*.png">
+      <Link>Twrp\Assets\stock\%(Filename)%(Extension)</Link>
+    </EmbeddedResource>
     <EmbeddedResource Include="..\..\..\tools\twrp-winre\modules\*.ko">
       <Link>Twrp\Assets\modules\%(Filename)%(Extension)</Link>
     </EmbeddedResource>

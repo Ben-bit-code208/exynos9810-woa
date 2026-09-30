@@ -115,7 +115,7 @@
                                 <ToggleSwitch x:Name="SkipTwrpToggle" Grid.Column="1" Toggled="OnSkipTwrpToggled" OnContent="" OffContent=""
                                               MinWidth="0" AutomationProperties.Name="TWRP is already on the phone" />
                             </Grid>
-                            <Grid ColumnSpacing="12">
+                            <Grid x:Name="ExperimentalRow" ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />

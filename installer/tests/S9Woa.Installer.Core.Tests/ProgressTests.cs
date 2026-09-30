@@ -76,7 +76,7 @@ public class ProgressTests
         {
             Assert.Equal(mine, v.AttachedHere);
         }
-        Assert.Contains("Dismount-DiskImage -ImagePath 'D:\\a''b.iso'", WindowsMedia.DismountIsoScript(@"D:\a'b.iso"), StringComparison.Ordinal);
+        Assert.Contains("Dismount-DiskImage -ImagePath 'C:\\a''b.iso'", WindowsMedia.DismountIsoScript(@"C:\a'b.iso"), StringComparison.Ordinal);
     }
 
     [Fact]

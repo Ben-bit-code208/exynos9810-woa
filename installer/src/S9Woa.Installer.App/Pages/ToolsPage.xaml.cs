@@ -61,7 +61,7 @@ public sealed partial class ToolsPage : Page
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            TwrpTicketText.Text = $"Could not scan the disks: {ex.Message}";
+            TwrpTicketText.Text = AppServices.Redact($"Could not scan the disks: {ex.Message}");
             return;
         }
         if (device is null)
@@ -96,7 +96,7 @@ public sealed partial class ToolsPage : Page
         catch (RecoveryTicketException ex)
         {
             AppServices.Log($"recovery ticket failed: {ex.Message}");
-            TwrpTicketText.Text = ex.Message;
+            TwrpTicketText.Text = AppServices.Redact(ex.Message);
         }
     }
 

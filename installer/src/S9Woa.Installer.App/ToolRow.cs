@@ -44,7 +44,7 @@ public sealed partial class ToolRow(ToolDefinition definition) : INotifyProperty
     }
 
     public bool ActionsEnabled => !_busy;
-    public string Detail => _status.Detail;
+    public string Detail => AppServices.Redact(_status.Detail);
 
     public string Glyph => _status.State switch
     {

@@ -16,9 +16,10 @@ public sealed record BackupManifest(
 
 /// <summary>
 /// Backs up the identity-critical partitions to the PC before any destructive
-/// step. Each partition is dd'd to the SD card, hashed on the device, pulled to
-/// the PC, and re-hashed here; a mismatch fails the backup. Keeping this backup
-/// is how a phone returns to stock, so a partial or unverified backup is refused.
+/// step. Each partition (a few MiB each) is dd'd into TWRP's RAM, hashed on the
+/// device, pulled to the PC, and re-hashed here; a mismatch fails the backup. No
+/// SD card is needed. Keeping this backup is how a phone returns to stock, so a
+/// partial or unverified backup is refused.
 /// </summary>
 public sealed class BackupService
 {
@@ -45,7 +46,7 @@ public sealed class BackupService
                 + "Make sure it is fully booted into TWRP, then try again.");
         }
 
-        await _twrp.MakeStagingDirAsync(ct).ConfigureAwait(false);
+        await _twrp.MakeDirAsync(_twrp.RamStagingDir, ct).ConfigureAwait(false);
         Directory.CreateDirectory(hostBackupDir);
 
         var entries = new List<BackupEntry>();
@@ -58,7 +59,7 @@ public sealed class BackupService
             var name = partitions.Keys.First(k => string.Equals(k, wanted, StringComparison.OrdinalIgnoreCase));
             log?.Report($"Backing up {name} ({present.IndexOf(wanted) + 1} of {present.Count})...");
             var size = await _twrp.PartitionSizeAsync(name, ct).ConfigureAwait(false);
-            var staged = $"{_twrp.SdStagingDir}/{name}.img";
+            var staged = $"{_twrp.RamStagingDir}/backup-{name}.img";
             await _twrp.DdAsync($"{TwrpClient.ByName}/{name}", staged, ct).ConfigureAwait(false);
 
             var deviceHash = await _twrp.Sha256Async(staged, ct: ct).ConfigureAwait(false);

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
+using S9Woa.Installer.Core;
 using S9Woa.Installer.Core.Deploy;
 using S9Woa.Installer.Core.Device;
 using S9Woa.Installer.Core.Image;
@@ -15,12 +16,52 @@ internal static class AppServices
     private static readonly object LogLock = new();
 
     public static IProcessRunner Runner { get; } = new ProcessRunner();
-    public static string DataDirectory { get; } = InstallState.DefaultDirectory;
+
+    /// <summary>
+    /// Settings, logs, backups and the toolset: %LOCALAPPDATA%\S9WoaInstaller, or the portable
+    /// <c>data</c> folder when one sits next to the app.
+    /// </summary>
+    public static string DataDirectory { get; } = InstallState.ResolveDirectory(AppContext.BaseDirectory);
     public static string LogDirectory { get; } = Path.Combine(DataDirectory, "logs");
     public static string LogFile { get; } = Path.Combine(LogDirectory, $"installer-{DateTime.Now:yyyyMMdd-HHmmss}.log");
-    public static string WorkDirectory { get; set; } = Path.Combine(DataDirectory, "work");
-    public static string BackupDirectory { get; set; } = Path.Combine(DataDirectory, "backups");
     public static InstallState State { get; } = InstallState.Load(DataDirectory);
+
+    /// <summary>Hides phone serials and the Windows user folder in the log and on screen.</summary>
+    public static Redactor Privacy { get; } = new(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+
+    static AppServices()
+    {
+        Privacy.AddSerial(State.DeviceSerial);
+        foreach (var version in HostVersions())
+        {
+            Privacy.Hide(version);
+        }
+    }
+
+    /// <summary>This PC's own Windows version strings (it may run a preview or internal build).</summary>
+    private static IEnumerable<string?> HostVersions()
+    {
+        var v = Environment.OSVersion.Version;
+        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+        yield return key?.GetValue("UBR") is int ubr ? $"{v.Major}.{v.Minor}.{v.Build}.{ubr}" : null;
+        yield return key?.GetValue("BuildLabEx") as string;
+        yield return key?.GetValue("BuildLab") as string;
+    }
+
+    public static string Redact(string? text) => Privacy.Redact(text);
+    /// <summary>Where the image is built (chosen on the This PC page); remembered so Resume finds it.</summary>
+    public static string WorkDirectory { get; set; } = State.WorkDirectory ?? Path.Combine(DataDirectory, "work");
+    public static string BackupDirectory { get; set; } = Path.Combine(DataDirectory, "backups");
+
+    /// <summary>
+    /// This phone's backup folder, named by its alias so the serial never shows in a path on screen.
+    /// A backup an earlier installer made (in a folder named by the serial) keeps being used.
+    /// </summary>
+    public static string BackupFolderFor(string serial)
+    {
+        var legacy = Path.Combine(BackupDirectory, serial);
+        return Directory.Exists(legacy) ? legacy : Path.Combine(BackupDirectory, Redactor.Alias(serial));
+    }
 
     /// <summary>Everything the installer needs on this PC, configured on first run by the Setup page.</summary>
     public static ToolsetManager Toolset { get; } = new(
@@ -57,7 +98,7 @@ internal static class AppServices
     public static void ReloadTools()
     {
         AdbPath = Toolset.ResolvePath(Tools.Adb);
-        Adb = AdbPath is null ? null : new AdbClient(AdbPath, Runner);
+        Adb = AdbPath is null ? null : new AdbClient(AdbPath, Runner, Privacy.AddSerial);
         Device = Adb is null ? null : new DeviceActions(Adb, Runner);
         HeimdallPath = Toolset.ResolvePath(Tools.Heimdall);
         ZadigPath = Toolset.ResolvePath(Tools.Zadig);
@@ -91,6 +132,7 @@ internal static class AppServices
         get => _currentDevice;
         set
         {
+            Privacy.AddSerial(value?.Serial);
             _currentDevice = value;
             CurrentDeviceChanged?.Invoke();
         }
@@ -114,6 +156,9 @@ internal static class AppServices
     public static string? InstallImagePath { get; set; }
     public static int EditionIndex { get; set; } = 1;
 
+    /// <summary>The media's Windows build as DISM reports it (e.g. 22621.2428), resolved by the media stage.</summary>
+    public static string? MediaBuild { get; set; }
+
     public static string? MediaPath { get; set; } = State.MediaPath;
     public static SlimProfile Profile { get; set; } =
         Enum.TryParse<SlimProfile>(State.SlimProfile, out var p) ? p : SlimProfile.Lite;
@@ -122,7 +167,7 @@ internal static class AppServices
 
     public static void Log(string message)
     {
-        var line = $"{DateTime.Now:HH:mm:ss} {message}";
+        var line = $"{DateTime.Now:HH:mm:ss} {Redact(message)}";
         lock (LogLock)
         {
             Directory.CreateDirectory(LogDirectory);
@@ -138,6 +183,7 @@ internal static class AppServices
         State.AccountName = Unattend.Username;
         State.VerifyWrites = VerifyWrites;
         State.SkipTwrpFlash = SkipTwrpFlash;
+        State.WorkDirectory = WorkDirectory;
         State.DeviceSerial = CurrentDevice?.Serial ?? State.DeviceSerial;
         State.DeviceBootloader = CurrentDevice?.Bootloader ?? State.DeviceBootloader;
         State.Save(DataDirectory);

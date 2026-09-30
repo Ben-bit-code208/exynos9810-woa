@@ -50,6 +50,28 @@ public class BootChainTests : IDisposable
     }
 
     [Fact]
+    public void AnyWindowsBuildGetsAFirmwareExactOrNearest()
+    {
+        var dir = WriteCatalog(Path.Combine(_root, "any"),
+            ("a.img", "22621.2428", ["22631.2428"], "aa", "ka"),
+            ("b.img", "22621.7582", ["22631.7584"], "bb", "kb"));
+        var catalog = FirmwareCatalog.Load(dir)!;
+
+        // Exact: the image built for this loader/kernel, or a listed media build before the image exists.
+        Assert.Equal(new FirmwareChoice(catalog.Images[0], true), catalog.Choose("22631.7633", "AA", "ka"));
+        Assert.Equal(new FirmwareChoice(catalog.Images[1], true), catalog.Choose("22631.7584"));
+
+        // Not built for: same kernel family first, then the nearest revision.
+        Assert.Equal(new FirmwareChoice(catalog.Images[1], false), catalog.Choose("22631.7633"));
+        Assert.Equal(new FirmwareChoice(catalog.Images[0], false), catalog.Choose("22621.2861"));
+        // A listed media build whose built loader/kernel differ is not exact.
+        Assert.Equal(new FirmwareChoice(catalog.Images[0], false), catalog.Choose("22621.2428", "cc", "kc"));
+        // Another family, or an unknown build: the newest image.
+        Assert.Equal(new FirmwareChoice(catalog.Images[1], false), catalog.Choose("26100.4061"));
+        Assert.Equal(new FirmwareChoice(catalog.Images[1], false), catalog.Choose(null));
+    }
+
+    [Fact]
     public void CatalogRefusesTamperedImagesAndEscapes()
     {
         var dir = WriteCatalog(Path.Combine(_root, "t"), ("a.img", "22621.2428", [], "aa", "ka"));
@@ -128,13 +150,63 @@ public class BootChainTests : IDisposable
     }
 
     [Fact]
-    public void BootRecoveryMessageIsAndroidsBootloaderMessage()
+    public void JudgesTheStartupRecordsOnEveryByte()
     {
-        var bcb = BootRouteService.BootRecoveryMessage();
-        Assert.Equal(4096, bcb.Length);
-        Assert.Equal("boot-recovery", System.Text.Encoding.ASCII.GetString(bcb, 0, 13));
-        Assert.Equal(0, bcb[13]);
-        Assert.Equal("recovery\n", System.Text.Encoding.ASCII.GetString(bcb, 64, 9));
-        Assert.All(bcb.Skip(73), b => Assert.Equal(0, b));
+        // This morning's records after a power loss: a few decayed bits, first words non-zero.
+        var rwd1 = new byte[64];
+        BinaryPrimitives.WriteUInt32LittleEndian(rwd1, 0x00100000);
+        BinaryPrimitives.WriteUInt32LittleEndian(rwd1.AsSpan(8), 0x00400000);
+        var p3 = new byte[128];
+        BinaryPrimitives.WriteUInt32LittleEndian(p3, 0x00000010);
+        BinaryPrimitives.WriteUInt32LittleEndian(p3.AsSpan(20), 0x00000010);
+        var decayed = new StartupRecords(rwd1, p3);
+        Assert.False(decayed.Rwd1Clear);
+        Assert.False(decayed.P3Clear);
+        Assert.False(decayed.ReadyToStart);
+        Assert.StartsWith("unreadable (first word 0x00100000, 2 of 64 bytes set)", decayed.Rwd1Kind, StringComparison.Ordinal);
+        Assert.StartsWith("invalid (first word 0x00000010, 2 of 128 bytes set)", decayed.P3Kind, StringComparison.Ordinal);
+
+        // The record that hung the reference phone: a ZERO first word with stray bits further in.
+        // A magic-only check calls this clean; the firmware's gate halts on it.
+        var hidden = new byte[128];
+        BinaryPrimitives.WriteUInt32LittleEndian(hidden.AsSpan(4), 0x40000000);
+        BinaryPrimitives.WriteUInt32LittleEndian(hidden.AsSpan(8), 0x00000800);
+        Assert.False(new StartupRecords(new byte[64], hidden).P3Clear);
+
+        // All-ones (a cold erase) is not all-zero: the gate only passes it under extra guards.
+        Assert.False(new StartupRecords(new byte[64], Enumerable.Repeat((byte)0xFF, 128).ToArray()).P3Clear);
+        Assert.Equal("erased (all ones)", new StartupRecords(new byte[64], Enumerable.Repeat((byte)0xFF, 128).ToArray()).P3Kind);
+
+        // A left-over, well-formed RWD1 record from an earlier start still has to go.
+        var stale = new StartupRecords(Record(0x20, 2, 2, 0), new byte[128]);
+        Assert.False(stale.Rwd1Clear);
+        Assert.StartsWith("left over from an earlier start: SEC", stale.Rwd1Kind, StringComparison.Ordinal);
+
+        Assert.True(new StartupRecords(new byte[64], new byte[128]).ReadyToStart);
+    }
+
+    [Fact]
+    public void RecognisesAWellFormedP3Record()
+    {
+        var p3 = new uint[32];
+        p3[0] = StartupRecords.P3Magic;
+        p3[1] = StartupRecords.P3VersionLength;
+        p3[2] = 0xA55E3013;
+        p3[5] = 0x60;
+        var xor = StartupRecords.P3Magic;
+        for (var i = 1; i < 31; i++)
+        {
+            xor ^= p3[i];
+        }
+        p3[31] = xor; // makes the XOR over all 32 words zero
+        var bytes = new byte[128];
+        for (var i = 0; i < 32; i++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(i * 4), p3[i]);
+        }
+        Assert.True(StartupRecords.IsValidP3(bytes));
+        Assert.Equal("left over from an earlier start", new StartupRecords(new byte[64], bytes).P3Kind);
+        bytes[40] ^= 1;
+        Assert.False(StartupRecords.IsValidP3(bytes));
     }
 }

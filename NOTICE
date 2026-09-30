@@ -22,6 +22,13 @@ Samsung sec_ts / s6sy761 touchscreen driver — Andi Shyti and contributors
   driver. GPL-2.0-only. The original copyright and license notices are retained
   in that subtree.
 
+Microsoft Windows-driver-samples — SkeletonI2C
+  The WDF/SpbCx framework scaffolding of drivers/Exynos9810Hsi2c/ comes from the
+  spb/SkeletonI2C sample (https://github.com/microsoft/Windows-driver-samples).
+  Those portions are Copyright (c) Microsoft Corporation and are used under the
+  Microsoft Public License, included as drivers/Exynos9810Hsi2c/MS-PL.txt. The
+  Exynos HSI2C engine itself is original work.
+
 TWRP (Team Win Recovery Project)
   The recovery used to stage and write the Windows image on the device. TWRP is
   GPL-3.0 (https://github.com/TeamWin/android_bootable_recovery). The installer
@@ -29,11 +36,12 @@ TWRP (Team Win Recovery Project)
   twrp-3.7.0_9-0-star2lte.img from twrp.me, and the installer re-skins that image
   in place on the user's PC into a Windows-Recovery-Environment look
   (tools/twrp-winre and installer/.../Twrp/WinReTwrpBuilder.cs). The theme XML,
-  the /sbin helper scripts and the tile/gear artwork are original work; the two
-  kernel modules baked into the recovery (rwd1_ack, rwd1_evidence_reader) are our
-  own GPL-2.0 code, with sources under tools/twrp-winre/modules/. No TeamWin
-  bitmap is committed; the stock theme's accent PNGs are recoloured at build
-  time from the user's own base image.
+  the reskin rules (tools/twrp-winre/theme/reskin.xml), the /sbin helper scripts
+  and all artwork are original work: every stock TWRP bitmap is replaced at build
+  time by an original drawing of the same name and size (tools/twrp-winre/assets),
+  so no TeamWin bitmap is committed or shipped in the built image. The two kernel
+  modules baked into the recovery (rwd1_ack, rwd1_evidence_reader) are our own
+  GPL-2.0 code, with sources under tools/twrp-winre/modules/.
 
 7-Zip LZMA SDK — Igor Pavlov
   installer/src/S9Woa.Installer.Core/Twrp/Lzma/ vendors the managed LZMA SDK,
@@ -46,6 +54,14 @@ Segoe UI (Microsoft)
   The WinRE-look recovery uses Segoe UI, which is copied from the *builder's own*
   %WINDIR%\Fonts at build time and written into that machine's recovery image. No
   Segoe font file is committed to this repository or redistributed with it.
+
+UpdateOS gear animation (Microsoft)
+  Optionally, the recovery shows Microsoft's UpdateOS rotating gears. The GIF is
+  supplied by the user (for example in their build folder) and, like the fonts,
+  is read only at build time on their own PC: its frames are rendered into that
+  machine's recovery image and nowhere else. Neither the GIF nor any frame derived
+  from it is committed to this repository or redistributed; without it, the
+  recovery uses the original procedurally drawn gears in tools/twrp-winre.
 
 Heimdall (https://github.com/Benjamin-Dobell/Heimdall, MIT) and
 Thor (https://github.com/Samsung-Loki/Thor)

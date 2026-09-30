@@ -1,180 +1,264 @@
 #!/sbin/sh
 # SPDX-License-Identifier: BSD-2-Clause-Patent
 #
-# winre-statuswatch.sh - raise the "Installing Windows" screen while the
-# installer is writing to the phone, and take it down when it stops.
+# winre-statuswatch.sh - show the "Installing Windows" screen while the
+# installer writes to the phone, with a live percentage, and never let TWRP
+# flash its own "Running Recovery Commands" page over it.
 #
-# WHY A STATUS FILE INSTEAD OF WATCHING adb push
-# The research build watched adbd's open file descriptors, because back then the
-# installer pushed the whole Windows image straight over `adb push`. It no longer
-# does: it pushes small chunks into TWRP's RAM (/tmp/s9woa) and writes the disk
-# with a shell `dd if=/tmp/... of=/dev/block/sdaNN`, so adbd never opens the
-# destination and the fd watcher sees nothing useful. Two detectors replace it:
+# WHAT IT WATCHES
+#   PRIMARY   /tmp/s9woa/status, a key=value file the installer rewrites as it
+#             goes (phase=, label=, percent=, detail=, done_bytes=,
+#             total_bytes=). The installer appends the write to shell commands
+#             it runs anyway, so keeping it current costs no extra round trip,
+#             and it replaces the file atomically (write + mv). It deletes the
+#             file when a phase ends. A file whose contents have not changed
+#             for STALE seconds is treated as a crashed installer.
+#   FALLBACK  with no fresh status file, a process with `of=/dev/block/` on its
+#             command line (a dd writing a block device) raises a generic
+#             screen, checked every couple of seconds.
 #
-#   PRIMARY   the installer writes /tmp/s9woa/status with key=value lines
-#             (phase=, percent=, label=, done_bytes=, total_bytes=) and rewrites
-#             it as it goes. That is authoritative: it names the phase ("Copying
-#             Windows", "Writing boot files", "Installing firmware") and carries
-#             a percentage, so the screen can say what is actually happening.
-#             The installer deletes the file when it finishes; a file older than
-#             STALE seconds is treated as a crashed installer and ignored.
+# HOW THE SCREEN IS DRIVEN - AND WHY IT NO LONGER BLINKS
+#   The first version pushed the caption and percentage into GUI variables
+#   with `twrp set`. TWRP runs every openrecoveryscript command except
+#   changepage/reloadtheme/dumpstrings as a GUI action on singleaction_page and
+#   then switches back (gui.cpp ors_command_read), so each update flashed the
+#   stock page - blue header, TeamWin logo, a console of red and white lines -
+#   for a frame. Now:
+#     * live values travel as Android properties (setprop s9woa.*). TWRP's
+#       DataManager resolves "property.<name>" with property_get() on every
+#       read, so %property.s9woa.label% in a <text> and a <progressbar> bound
+#       to property.s9woa.pct follow them with no page change at all;
+#     * the screen is raised and cleared with `twrp changepage=<page>`, which
+#       TWRP serves directly on the GUI thread: one call to raise, one to
+#       clear, per install phase (and one more only if a phase switches
+#       between a percentage bar and the plain sweep);
+#     * `twrp set` is never used.
+#   The CLI exits 0 even when TWRP refuses a command (it refuses everything
+#   while tw_busy is set), so every page change is verified against the
+#   "Set page:" lines TWRP logs to /tmp/recovery.log.
 #
-#   FALLBACK  if there is no fresh status file but some process has
-#             `of=/dev/block/` on its command line (a dd writing a block device),
-#             raise a generic "Installing Windows" screen anyway. This costs one
-#             grep across /proc/*/cmdline per tick and covers a manual dd or an
-#             installer too old to write the status file.
-#
-# WHY THE BAR IS INDETERMINATE AND THE PERCENT ONLY IN THE CAPTION
-# The only channel from a shell into a TWRP GUI variable is openrecoveryscript,
-# and every ORS session bounces the display through singleaction_page (which
-# carries its own console and progress bar). One bounce to raise and one to clear
-# are invisible; a percentage pushed twice a second would strobe. So the animated
-# bar stays indeterminate and the *caption* carries the phase and a coarse
-# percent, updated only when the composed caption string actually changes and no
-# more often than UPDATE_MS. A live progress bar bound to a variable would need a
-# poke on every step and is deliberately not attempted; the phase caption is the
-# meaningful signal here.
-#
-# SAFETY RULES (kept from the research pushwatch, each verified there)
-#   * raise ONLY when the last "Set page:" in the recovery log is one of
-#     RAISE_PAGES - static menus where no threaded action can be in flight;
-#   * the clear is UNCONDITIONAL and retried, so the screen always comes back;
-#   * every `twrp` call is wrapped in `timeout -t 8`, so a wedged GUI stops this
-#     watcher rather than the other way round;
-#   * a minimum dwell holds the screen a beat so an instant write still shows;
-#   * the copy page's Home/Back go via 'main', which resets the flag, so a dead
-#     watcher can never trap the UI.
+# SAFETY RULES (from the research push watcher, each verified there)
+#   * raise ONLY over the static WinRE menus in RAISE_PAGES - never over a
+#     running report, a confirmation or a TWRP operation;
+#   * clear only if the install screen is still what is showing, and go back
+#     to the page it covered; if the user already left it (the back arrow,
+#     Back or Home on it all go to 'main'), do not navigate, and do not raise
+#     it again for the same phase;
+#   * every `twrp` call is wrapped in `timeout -t 8` (busybox 1.22 syntax), so a
+#     wedged GUI stops this watcher rather than the other way round;
+#   * a minimum dwell keeps an instant phase from strobing the screen.
 
 LOG=/tmp/winre-statuswatch.log
 : > "$LOG"
 exec >>"$LOG" 2>&1
 
 STATUS=/tmp/s9woa/status
-POLL=0.25            # seconds per tick
-STALE=30             # status file older than this = installer gone
-IDLE_TICKS=8         # ~2 s of no activity before clearing
-MIN_DWELL_TICKS=12   # ~3 s minimum on screen even for an instant write
-UPDATE_MS=5000       # never repaint the caption faster than this
-ORS_TIMEOUT=8        # busybox 1.22 wants `timeout -t SECS`
-CLEAR_TRIES=4
+TICK_US=250000        # one tick; busybox 1.22 sleep takes whole seconds only
+STALE=300             # s with no change to the status file = installer gone
+IDLE_TICKS=8          # ~2 s with no activity before clearing
+MIN_DWELL_TICKS=12    # ~3 s on screen at least
+PAGE_CHECK_TICKS=8    # while shown, look for a user escape every ~2 s
+DD_CHECK_TICKS=8      # while idle, the dd fallback scan every ~2 s
+ORS_TIMEOUT=8
 RAISE_PAGES="winre_home winre_troubleshoot winre_advanced winre_advanced2 winre_output"
-
-twrp_set() {
-	timeout -t "$ORS_TIMEOUT" twrp set "$1" "$2" >/dev/null 2>&1
-}
+SCREEN=winre_install
 
 cur_page() {
-	tail -n 300 /tmp/recovery.log 2>/dev/null \
-		| grep "Set page:" | tail -n 1 | sed "s/.*'\(.*\)'.*/\1/"
+	tail -n 400 /tmp/recovery.log 2>/dev/null \
+		| grep "Set page: '" | tail -n 1 | sed "s/.*Set page: '\([^']*\)'.*/\1/"
 }
 
-now_ms() {
-	echo $(( $(date +%s 2>/dev/null || echo 0) * 1000 ))
+# The page on screen, looking through a stray openrecoveryscript bounce: TWRP
+# returns from singleaction_page to the page it interrupted, so wait it out.
+settled_page() {
+	n=0
+	pg=$(cur_page)
+	while [ "$pg" = singleaction_page ] && [ "$n" -lt 8 ]; do
+		sleep 1
+		n=$((n + 1))
+		pg=$(cur_page)
+	done
+	echo "$pg"
 }
 
-# Read the status file into LABEL/PCT and decide freshness. Existence is the
-# primary signal (the installer deletes the file when done); the age check is a
-# safety net for a crashed installer, and is skipped if stat is unavailable.
+changepage() {
+	timeout -t "$ORS_TIMEOUT" twrp "changepage=$1" >/dev/null 2>&1
+	usleep 300000
+	[ "$(cur_page)" = "$1" ]
+}
+
+is_raise_page() {
+	for p in $RAISE_PAGES; do
+		[ "$1" = "$p" ] && return 0
+	done
+	return 1
+}
+
+now() {
+	read -r up _ < /proc/uptime
+	NOW=${up%%.*}
+}
+
+# Fork-free read of the status file into PHASE/LABEL/PCT/DETAIL; SIG is the
+# whole content, so any rewrite by the installer counts as a sign of life.
 read_status() {
-	LABEL=""; PCT=""
+	PHASE=""; LABEL=""; PCT=""; DETAIL=""; SIG=""
 	[ -f "$STATUS" ] || return 1
-	mt=$(stat -c %Y "$STATUS" 2>/dev/null)
-	if [ -n "$mt" ]; then
-		nw=$(date +%s 2>/dev/null || echo "$mt")
-		[ $((nw - mt)) -le "$STALE" ] || return 1
-	fi
 	while IFS='=' read -r k v; do
 		case "$k" in
+			phase) PHASE=$v ;;
 			label) LABEL=$v ;;
 			percent) PCT=$v ;;
+			detail) DETAIL=$v ;;
 		esac
+		SIG="$SIG|$k=$v"
 	done < "$STATUS"
-	return 0
+	[ -n "$SIG" ]
 }
 
-dd_writer() {
-	grep -qa "of=/dev/block/" /proc/[0-9]*/cmdline 2>/dev/null
+# setprop only what changed; each call is a fork. Without working properties
+# (PROPS=0) the static screen is used and there is nothing to publish.
+publish() {
+	[ "$PROPS" = 1 ] || return 0
+	[ "$MODE" != "$P_MODE" ] && setprop s9woa.mode "$MODE" && P_MODE=$MODE
+	[ "$LABEL" != "$P_LABEL" ] && setprop s9woa.label "${LABEL:-Installing Windows}" && P_LABEL=$LABEL
+	[ "$PCT" != "$P_PCT" ] && setprop s9woa.pct "${PCT:-0}" && P_PCT=$PCT
+	[ "$DETAIL" != "$P_DETAIL" ] && setprop s9woa.detail "${DETAIL:- }" && P_DETAIL=$DETAIL
 }
 
-compose() {
-	c="$LABEL"
-	[ -z "$c" ] && c="Installing Windows"
-	# A single '%' is safe in a TWRP text node (gui_parse_text stops at an
-	# unmatched one); avoid emitting two.
-	if [ -n "$PCT" ]; then
-		c="$c - ${PCT}%"
+forget_published() {
+	P_MODE="-"; P_LABEL="-"; P_PCT="-"; P_DETAIL="-"
+}
+
+show_prop() {
+	[ "$PROPS" = 1 ] && setprop s9woa.show "$1"
+}
+
+raise() {
+	page=$(cur_page)
+	if ! is_raise_page "$page"; then
+		if [ "$page" != "$REFUSED" ]; then
+			echo "active but page=$page is not one to interrupt; leaving the UI alone"
+			REFUSED=$page
+		fi
+		return 1
 	fi
-	echo "$c"
+	forget_published
+	publish
+	show_prop 1
+	if changepage "$SCREEN"; then
+		ORIGIN=$page; STATE=shown; HELD=0; IDLE=0; SHOWN_MODE=$MODE; REFUSED=""
+		echo "raised $SCREEN over $page: ${LABEL:-Installing Windows} ${PCT:+$PCT%} ($MODE)"
+		# Re-assert once the page has drawn, in case the progress bar's first
+		# update wrote into s9woa.pct (see the note on winre_install).
+		usleep 300000
+		forget_published
+		publish
+		return 0
+	fi
+	show_prop 0
+	echo "raise did not take (page=$(cur_page)); will retry"
+	return 1
 }
 
-STATE=idle
-HELD=0
-IDLE=0
-LASTCAP=""
-LASTUPD=0
+clear_screen() {
+	page=$(settled_page)
+	if [ "$page" = "$SCREEN" ]; then
+		n=0
+		until changepage "$ORIGIN"; do
+			n=$((n + 1))
+			echo "  clear attempt $n did not take (page=$(cur_page))"
+			[ "$n" -ge 4 ] && break
+			sleep 1
+		done
+		echo "cleared back to $ORIGIN after $HELD ticks"
+	else
+		echo "the user already left the screen (page=$page); not navigating"
+	fi
+	show_prop 0
+	STATE=idle; HELD=0; IDLE=0
+}
+
+# Live values need Android properties; prove they work before relying on them.
+PROPS=0
+if setprop s9woa.show 0 2>/dev/null && [ "$(getprop s9woa.show 2>/dev/null)" = 0 ]; then
+	PROPS=1
+else
+	SCREEN=winre_install_static
+fi
+STATE=idle            # idle | shown | dismissed
+HELD=0; IDLE=0; TICK=0
+ORIGIN=winre_home; SHOWN_MODE=""; DISMISSED=""; REFUSED=""
+LASTSIG=""; CHANGED=0; DD=0
+forget_published
 
 echo "=== winre statuswatch: $(date 2>/dev/null) ==="
+echo "properties: $([ "$PROPS" = 1 ] && echo "working, live screen $SCREEN" || echo "NOT working, static screen $SCREEN")"
 
 while :; do
+	TICK=$((TICK + 1))
+	now
 	active=0
-	cap="Installing Windows"
 	if read_status; then
-		active=1
-		cap=$(compose)
-	elif dd_writer; then
-		active=1
-		cap="Installing Windows"
+		if [ "$SIG" != "$LASTSIG" ]; then
+			LASTSIG=$SIG
+			CHANGED=$NOW
+		fi
+		if [ $((NOW - CHANGED)) -le "$STALE" ]; then
+			active=1
+			[ -z "$PHASE" ] && PHASE=status
+		fi
 	fi
+	if [ "$active" = 0 ]; then
+		# Fallback: a dd writing a block device. The [k] keeps grep from
+		# matching its own command line.
+		if [ "$STATE" != idle ] || [ $((TICK % DD_CHECK_TICKS)) = 0 ]; then
+			DD=0
+			grep -qa "of=/dev/bloc[k]/" /proc/[0-9]*/cmdline 2>/dev/null && DD=1
+		fi
+		if [ "$DD" = 1 ]; then
+			active=1
+			PHASE=dd; LABEL="Writing to the phone's storage"; PCT=""; DETAIL=" "
+		fi
+	fi
+	if [ -n "$PCT" ]; then MODE=percent; else MODE=busy; fi
 
-	[ "$STATE" = busy ] && HELD=$((HELD + 1))
-
-	if [ "$active" = 1 ]; then
-		IDLE=0
-		if [ "$STATE" = idle ]; then
-			page=$(cur_page)
-			ok=0
-			for p in $RAISE_PAGES; do
-				[ "$page" = "$p" ] && ok=1 && break
-			done
-			if [ "$ok" = 1 ]; then
-				# Aim the return page and the caption before raising the flag,
-				# so the page draws correct the instant it appears.
-				twrp_set winre_push_back "$page"
-				twrp_set winre_push_sub "$cap"
-				twrp_set tw_screen_timeout_secs 0
-				if twrp_set winre_push 1; then
-					STATE=busy; HELD=0; LASTCAP="$cap"; LASTUPD=$(now_ms)
-					echo "raised on $page: $cap"
-				else
-					echo "raise poke failed; will retry next tick"
+	case "$STATE" in
+		idle)
+			if [ "$active" = 1 ] && [ "$PHASE" != "$DISMISSED" ]; then
+				raise
+			fi
+			[ "$active" = 0 ] && DISMISSED=""
+			;;
+		shown)
+			HELD=$((HELD + 1))
+			if [ "$active" = 1 ]; then
+				IDLE=0
+				publish
+				if [ $((HELD % PAGE_CHECK_TICKS)) = 0 ] && [ "$(settled_page)" != "$SCREEN" ]; then
+					echo "the user left the screen; not raising it again for phase $PHASE"
+					show_prop 0
+					STATE=dismissed; DISMISSED=$PHASE
+				elif [ "$MODE" != "$SHOWN_MODE" ] && [ "$PROPS" = 1 ]; then
+					# The bar and the sweep are chosen when the page is entered.
+					if changepage "$SCREEN"; then
+						echo "switched to the $MODE bar for phase $PHASE"
+					fi
+					SHOWN_MODE=$MODE
 				fi
 			else
-				echo "active but page=$page is not interruptible; leaving the UI alone"
+				IDLE=$((IDLE + 1))
+				if [ "$HELD" -ge "$MIN_DWELL_TICKS" ] && [ "$IDLE" -ge "$IDLE_TICKS" ]; then
+					clear_screen
+				fi
 			fi
-		elif [ "$cap" != "$LASTCAP" ]; then
-			nowm=$(now_ms)
-			if [ $((nowm - LASTUPD)) -ge "$UPDATE_MS" ]; then
-				twrp_set winre_push_sub "$cap"
-				LASTCAP="$cap"; LASTUPD=$nowm
-				echo "caption: $cap"
+			;;
+		dismissed)
+			if [ "$active" = 0 ] || [ "$PHASE" != "$DISMISSED" ]; then
+				STATE=idle
 			fi
-		fi
-	elif [ "$STATE" = busy ]; then
-		IDLE=$((IDLE + 1))
-		if [ "$HELD" -ge "$MIN_DWELL_TICKS" ] && [ "$IDLE" -ge "$IDLE_TICKS" ]; then
-			n=0
-			while [ "$n" -lt "$CLEAR_TRIES" ]; do
-				twrp_set winre_push 0 && break
-				n=$((n + 1))
-				echo "  clear attempt $n failed; retrying"
-				sleep 1
-			done
-			twrp_set winre_push_back winre_home
-			echo "cleared after $HELD ticks on screen"
-			STATE=idle; HELD=0; IDLE=0; LASTCAP=""
-		fi
-	fi
+			;;
+	esac
 
-	sleep "$POLL"
+	usleep "$TICK_US"
 done

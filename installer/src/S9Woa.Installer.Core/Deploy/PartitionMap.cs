@@ -40,6 +40,8 @@ public static class PartitionMap
     /// <summary>
     /// Second FAT32 copy of the boot files on Android's SYSTEM partition (sda18). The reference
     /// deployment kept both; firmware builds that only connect the SYSTEM-sized FAT volume use it.
+    /// On the reference phone its GPT type is the EFI system partition GUID (a stock flash resets it
+    /// to basic data); <see cref="GptTypeService"/> puts that back.
     /// </summary>
     public const string SecondaryEfiSystemPartition = "SYSTEM";
 

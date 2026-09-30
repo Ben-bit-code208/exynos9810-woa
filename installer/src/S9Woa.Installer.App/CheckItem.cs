@@ -10,8 +10,8 @@ namespace S9Woa.Installer.App;
 public sealed partial class CheckItem(CheckResult result)
 {
     public string Title => result.Title;
-    public string Message => result.Detail;
-    public string Remedy => result.Action ?? "";
+    public string Message => AppServices.Redact(result.Detail);
+    public string Remedy => AppServices.Redact(result.Action);
     public Visibility RemedyVisibility => string.IsNullOrEmpty(result.Action) ? Visibility.Collapsed : Visibility.Visible;
 
     public string Glyph => result.Severity switch

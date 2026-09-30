@@ -113,7 +113,7 @@ public sealed partial class SetupPage : Page, IWizardStep
     {
         ResultBar.Severity = severity;
         ResultBar.Title = title;
-        ResultBar.Message = message;
+        ResultBar.Message = AppServices.Redact(message);
         ResultBar.IsOpen = true;
     }
 

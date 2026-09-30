@@ -41,14 +41,14 @@ public static class StageCatalog
         new("host", "Check this PC", "Administrator rights, disk space, adb and Samsung USB driver.", StageAvailability.Ready),
         new("identify", "Identify the phone", "Model, firmware and bootloader state over ADB.", StageAvailability.Ready),
         new("media", "Get Windows", "Use your ISO/ESD, or download ARM64 media from Microsoft.", StageAvailability.Ready),
-        new("image", "Build the Windows image", "Apply, add drivers, slim (optional), configure boot and first-run settings. Done on this PC before the phone is touched.", StageAvailability.Experimental),
+        new("image", "Build the Windows image", "Apply, add drivers, slim (optional), configure boot and first-run settings. Done on this PC before the phone is touched.", StageAvailability.Ready),
         new("unlock", "Unlock the bootloader", "OEM unlock in Developer options, then the Download-mode unlock. Wipes Android.", StageAvailability.Guided, Destructive: true),
-        new("twrp", "Install TWRP", "Flash TWRP to RECOVERY from Download mode and boot it once.", StageAvailability.Experimental, Destructive: true),
-        new("backup", "Back up the phone", "Copy EFS, modem calibration and the partition table to this PC before anything else is written.", StageAvailability.Experimental),
-        new("partition", "Prepare partitions", "Locate the target partitions by name and verify the validated layout.", StageAvailability.Experimental, Destructive: true),
-        new("transfer", "Copy Windows to the phone", "Write the used part of the image and the boot files through TWRP, optionally verifying every block.", StageAvailability.Experimental, Destructive: true),
-        new("uefi", "Install UEFI", "Flash the UEFI boot image to BOOT. RECOVERY keeps TWRP.", StageAvailability.Experimental, Destructive: true),
-        new("firstboot", "First boot", "Boot Windows and finish setup.", StageAvailability.Experimental),
+        new("twrp", "Install TWRP", "Flash TWRP to RECOVERY from Download mode and boot it once.", StageAvailability.Ready, Destructive: true),
+        new("backup", "Back up the phone", "Copy EFS, modem calibration and the partition table to this PC before anything else is written.", StageAvailability.Ready),
+        new("partition", "Prepare partitions", "Locate the target partitions by name and verify the validated layout.", StageAvailability.Ready, Destructive: true),
+        new("transfer", "Copy Windows to the phone", "Write the used part of the image and the boot files through TWRP, optionally verifying every block.", StageAvailability.Ready, Destructive: true),
+        new("uefi", "Install UEFI", "Flash the UEFI boot image to BOOT. RECOVERY keeps TWRP.", StageAvailability.Ready, Destructive: true),
+        new("firstboot", "First boot", "Boot Windows and finish setup.", StageAvailability.Ready),
     ];
 
     public static StageDefinition Get(string id) => All.First(s => s.Id == id);
@@ -61,7 +61,10 @@ public sealed class StageRecord
     public string? Detail { get; set; }
 }
 
-/// <summary>Resumable installer state, persisted as JSON under %LOCALAPPDATA%\S9WoaInstaller.</summary>
+/// <summary>
+/// Resumable installer state, persisted as JSON in the data folder: %LOCALAPPDATA%\S9WoaInstaller,
+/// or the portable <c>data</c> folder next to the app (<see cref="ResolveDirectory"/>).
+/// </summary>
 public sealed class InstallState
 {
     private static readonly JsonSerializerOptions Json = new()
@@ -83,12 +86,28 @@ public sealed class InstallState
     /// <summary>TWRP is already on the phone: the TWRP step only boots it instead of flashing.</summary>
     public bool SkipTwrpFlash { get; set; }
 
+    /// <summary>The working folder the image is built in (null = the default under this folder).</summary>
+    public string? WorkDirectory { get; set; }
+
     /// <summary>UEFI image (file name in the firmware catalog) matching the built Windows image.</summary>
     public string? FirmwareFile { get; set; }
     public Dictionary<string, StageRecord> Stages { get; set; } = [];
 
     public static string DefaultDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "S9WoaInstaller");
+
+    public const string PortableFolderName = "data";
+
+    /// <summary>
+    /// Portable mode: a folder named <c>data</c> next to the app keeps the state, logs, backups
+    /// and toolset there (a self-contained folder on a USB drive, or one used for a recording);
+    /// otherwise <see cref="DefaultDirectory"/>.
+    /// </summary>
+    public static string ResolveDirectory(string appDirectory, string? defaultDirectory = null)
+    {
+        var portable = Path.Combine(appDirectory, PortableFolderName);
+        return Directory.Exists(portable) ? portable : defaultDirectory ?? DefaultDirectory;
+    }
 
     public StageStatus StatusOf(string id) => Stages.TryGetValue(id, out var r) ? r.Status : StageStatus.Pending;
 

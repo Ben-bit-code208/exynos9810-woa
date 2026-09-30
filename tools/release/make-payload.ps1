@@ -1,40 +1,67 @@
 <#
 .SYNOPSIS
-  Assemble the installer's release payload: uefi.img, drivers.zip and SHA256SUMS.
+  Assemble the installer's release payload: the UEFI firmware catalog, drivers.zip and SHA256SUMS.
 
 .DESCRIPTION
-  The installer's Setup page downloads these three assets from the latest GitHub
-  release and keeps a file only if it matches SHA256SUMS. This script builds
-  exactly that set from local build outputs:
+  The installer's Setup page downloads these assets from the latest GitHub release and keeps a
+  file only if it matches SHA256SUMS. This script builds exactly that set from local build outputs:
 
-    uefi.img     the packed UEFI Android boot image (firmware\tools\pack-uefi.ps1)
-    drivers.zip  one top-level folder per built driver package (.inf + .sys + .cat)
-    SHA256SUMS   "<sha256>  <name>" for each of the above
+    firmware.json + *.img  the firmware catalog (one UEFI build per Windows build, see
+                           installer Image/FirmwareCatalog.cs); every image is checked against
+                           the SHA-256 the catalog records for it
+    uefi.img               (legacy, -Uefi) a single packed UEFI boot image, for installers
+                           that predate the catalog
+    drivers.zip            one top-level folder per built driver package (.inf + .sys + .cat)
+    SHA256SUMS             "<sha256>  <name>" for each of the above
 
   Publish with, for example:
     gh release create v0.1.0 (Get-ChildItem <OutDir>).FullName --title "v0.1.0"
 
-.PARAMETER Uefi     Path to the packed UEFI boot image.
-.PARAMETER Drivers  One or more built driver package folders. Exynos9810Ufs is required.
-.PARAMETER OutDir   Output folder (created; must be empty or absent).
+.PARAMETER FirmwareCatalog  Folder holding firmware.json and the UEFI images it lists.
+.PARAMETER Uefi             Path to a single packed UEFI boot image (legacy layout).
+.PARAMETER Drivers          One or more built driver package folders. Exynos9810Ufs is required.
+.PARAMETER OutDir           Output folder (created; must be empty or absent).
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory)] [string]$Uefi,
+  [string]$FirmwareCatalog,
+  [string]$Uefi,
   [Parameter(Mandatory)] [string[]]$Drivers,
   [Parameter(Mandatory)] [string]$OutDir
 )
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+if (-not $FirmwareCatalog -and -not $Uefi) { throw "Give -FirmwareCatalog (or the legacy -Uefi)." }
 $bootPartitionBytes = 14080 * 4096
 
-$uefiItem = Get-Item -LiteralPath $Uefi
-if ($uefiItem.Length -gt $bootPartitionBytes) { throw "UEFI image is larger than the BOOT partition ($bootPartitionBytes bytes)." }
-$magic = [byte[]]::new(8)
-$stream = [IO.File]::OpenRead($uefiItem.FullName)
-try { [void]$stream.Read($magic, 0, 8) } finally { $stream.Dispose() }
-if ([Text.Encoding]::ASCII.GetString($magic) -ne "ANDROID!") { throw "$Uefi is not an Android boot image." }
+function Assert-UefiImage([string]$Path) {
+  $item = Get-Item -LiteralPath $Path
+  if ($item.Length -gt $bootPartitionBytes) { throw "$Path is larger than the BOOT partition ($bootPartitionBytes bytes)." }
+  $magic = [byte[]]::new(8)
+  $stream = [IO.File]::OpenRead($item.FullName)
+  try { [void]$stream.Read($magic, 0, 8) } finally { $stream.Dispose() }
+  if ([Text.Encoding]::ASCII.GetString($magic) -ne "ANDROID!") { throw "$Path is not an Android boot image." }
+  $item
+}
+
+$firmware = @()
+if ($FirmwareCatalog) {
+  $catalogFile = Join-Path $FirmwareCatalog "firmware.json"
+  $catalog = Get-Content -LiteralPath $catalogFile -Raw | ConvertFrom-Json
+  if ($catalog.schema -ne "s9woa.firmware-catalog.v1") { throw "$catalogFile is not a s9woa.firmware-catalog.v1 catalog." }
+  if (-not $catalog.images) { throw "$catalogFile lists no images." }
+  foreach ($image in $catalog.images) {
+    if ($image.file -match '[\\/]|\.\.') { throw "$catalogFile names a file outside its folder: $($image.file)" }
+    $path = Join-Path $FirmwareCatalog $image.file
+    $item = Assert-UefiImage $path
+    $hash = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne $image.sha256.ToLowerInvariant()) { throw "$($image.file) does not match the SHA-256 in firmware.json." }
+    $firmware += $item
+  }
+  $firmware += Get-Item -LiteralPath $catalogFile
+}
+if ($Uefi) { $legacy = Assert-UefiImage $Uefi }
 
 $packages = foreach ($dir in $Drivers) {
   $item = Get-Item -LiteralPath $dir
@@ -51,7 +78,9 @@ $out = [IO.Path]::GetFullPath($OutDir)
 if ((Test-Path -LiteralPath $out) -and (Get-ChildItem -LiteralPath $out -Force)) { throw "$out is not empty." }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-Copy-Item -LiteralPath $uefiItem.FullName -Destination (Join-Path $out "uefi.img")
+$names = @()
+foreach ($f in $firmware) { Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $out $f.Name); $names += $f.Name }
+if ($Uefi) { Copy-Item -LiteralPath $legacy.FullName -Destination (Join-Path $out "uefi.img"); $names += "uefi.img" }
 
 $stage = Join-Path ([IO.Path]::GetTempPath()) ("s9woa-drivers-" + [guid]::NewGuid().ToString("N"))
 try {
@@ -64,8 +93,9 @@ try {
 } finally {
   if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 }
+$names += "drivers.zip"
 
-$lines = foreach ($name in "uefi.img", "drivers.zip") {
+$lines = foreach ($name in $names) {
   $hash = (Get-FileHash -LiteralPath (Join-Path $out $name) -Algorithm SHA256).Hash.ToLowerInvariant()
   "$hash  $name"
 }

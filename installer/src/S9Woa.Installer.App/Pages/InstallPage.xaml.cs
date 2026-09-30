@@ -25,6 +25,9 @@ public sealed partial class InstallPage : Page, IWizardStep
         _items = StageCatalog.All.Select(s => new StageItem(s) { Status = AppServices.State.StatusOf(s.Id) }).ToList();
         Timeline.ItemsSource = _items;
         ExperimentalToggle.IsOn = AppServices.ExperimentalEnabled;
+        // The opt-in only matters while some step is still experimental.
+        ExperimentalRow.Visibility = StageCatalog.All.Any(s => s.Availability == StageAvailability.Experimental)
+            ? Visibility.Visible : Visibility.Collapsed;
         VerifyToggle.IsOn = AppServices.VerifyWrites;
         SkipTwrpToggle.IsOn = AppServices.SkipTwrpFlash;
         var dev = AppServices.CurrentDevice;
@@ -48,7 +51,7 @@ public sealed partial class InstallPage : Page, IWizardStep
 
     public bool CanGoBack => !_running;
 
-    public string? NextLabel => _running ? "Installing…" : _items.Any(i => i.Status == StageStatus.Done) ? "Resume" : "Install";
+    public string? NextLabel => _running ? "Installing…" : _items.Any(i => i.Status == StageStatus.Failed) ? "Resume" : "Install";
 
     public Task<bool> OnAdvanceAsync()
     {
@@ -103,7 +106,7 @@ public sealed partial class InstallPage : Page, IWizardStep
     private void SetStatus(StageItem item, StageStatus status, string? detail = null)
     {
         item.Status = status;
-        AppServices.State.Set(item.Definition.Id, status, detail);
+        AppServices.State.Set(item.Definition.Id, status, detail is null ? null : AppServices.Redact(detail));
         AppServices.SaveState();
     }
 
@@ -169,21 +172,24 @@ public sealed partial class InstallPage : Page, IWizardStep
             LeadText.Text = "Unplug the phone. Windows finishes setting itself up and signs you in.";
             Report(InfoBarSeverity.Success, "All done", "Windows is installed on your Galaxy S9+.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
         {
             foreach (var i in _items.Where(i => i.Status == StageStatus.Running))
             {
                 SetStatus(i, StageStatus.Pending);
             }
+            AppServices.Log("install cancelled");
             Report(InfoBarSeverity.Warning, "Cancelled", "Nothing further was written. You can resume later.");
         }
-        catch (Exception e) when (e is InvalidOperationException or IOException or TimeoutException or UnauthorizedAccessException)
+        catch (Exception e)
         {
+            // Every stop is logged and shown, including errors no step anticipated: a stop without
+            // a message leaves nobody able to tell what happened.
             foreach (var i in _items.Where(i => i.Status == StageStatus.Running))
             {
                 SetStatus(i, StageStatus.Failed, e.Message);
             }
-            AppServices.Log($"install stopped: {e.Message}");
+            AppServices.Log($"install stopped: {e.GetType().Name}: {e.Message}");
             Report(InfoBarSeverity.Error, "Stopped", e.Message);
         }
         finally
@@ -302,7 +308,7 @@ public sealed partial class InstallPage : Page, IWizardStep
             log.Report("The phone is already in TWRP.");
             return await SettleTwrpAsync(log, ct) && await ClearBootRequestAsync(log, ct)
                 ? (true, "TWRP is running.")
-                : (false, "TWRP started but its connection is not settled yet. Wait a minute, then press Resume.");
+                : (false, "TWRP started but isn't answering over USB. Check the cable, then press Resume.");
         }
         if (resolved is null && AppServices.Device is not null
             && await RefreshDeviceAsync(ct) is { Mode: DeviceMode.Android } phone)
@@ -329,8 +335,11 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             restarted = await AppServices.TwrpFlasher.FlashRecoveryAsync(AppServices.TwrpImagePath, log, ct);
         }
-        catch (Exception e) when (e is IOException or TimeoutException)
+        catch (Exception e) when (e is IOException or TimeoutException or InvalidOperationException
+            || (e is OperationCanceledException && !ct.IsCancellationRequested))
         {
+            // A Download-mode port that disappears mid-session (the phone restarted, or the cable
+            // moved) surfaces as a cancelled or closed-port error: report it, never as a silent stop.
             return (false, $"Flashing TWRP failed: {e.Message} Restart the phone into Download mode (hold Volume Down + Power, "
                 + "then Volume Down + Bixby + Power) and press Resume.");
         }
@@ -348,12 +357,13 @@ public sealed partial class InstallPage : Page, IWizardStep
                 TimeSpan.FromMinutes(5), log, ct);
             return await SettleTwrpAsync(log, ct) && await ClearBootRequestAsync(log, ct)
                 ? (true, "TWRP is running.")
-                : (false, "TWRP started but its connection is not settled yet. Wait a minute, then press Resume.");
+                : (false, "TWRP started but isn't answering over USB. Check the cable, then press Resume.");
         }
         catch (TimeoutException)
         {
             return (false, restarted
-                ? "TWRP did not come up. If the phone is showing Android, restart it and hold Volume Up + Bixby + Power to open TWRP, then press Resume."
+                ? "TWRP did not come up by itself. Start it: hold Volume Down + Power until the screen goes off, then immediately "
+                    + "Volume Up + Bixby + Power. Then press Resume."
                 : "TWRP did not come up. The flash succeeded; boot TWRP manually, then press Resume.");
         }
     }
@@ -397,10 +407,10 @@ public sealed partial class InstallPage : Page, IWizardStep
         }
         return await SettleTwrpAsync(log, ct) && await ClearBootRequestAsync(log, ct)
             ? (true, "TWRP is running (not flashed; it was already on the phone).")
-            : (false, "TWRP started but its connection is not settled yet. Wait a minute, then press Resume.");
+            : (false, "TWRP started but isn't answering over USB. Check the cable, then press Resume.");
     }
 
-    /// <summary>Clears the MISC boot-recovery request used to start TWRP, so later restarts are normal.</summary>
+    /// <summary>Clears any Android boot request left in MISC (e.g. from Android's own reboot to recovery), so later restarts are normal.</summary>
     private static async Task<bool> ClearBootRequestAsync(IProgress<string> log, CancellationToken ct)
     {
         if (AppServices.CurrentDevice is not { } dev || AppServices.Twrp(dev.Serial) is not { } twrp)
@@ -434,9 +444,13 @@ public sealed partial class InstallPage : Page, IWizardStep
             d.State is AdbState.Device or AdbState.Recovery ? await AppServices.Adb.GetPropertiesAsync(d.Serial, ct) : null);
     }
 
+    /// <summary>TWRP only needs this long after boot before the installer uses it.</summary>
+    private const double SettleSeconds = 30;
+
     /// <summary>
-    /// TWRP's adb drops and SD access fail during its first minutes; wait until it has been up
-    /// for 150 s with the SD card mounted before staging anything through it.
+    /// Waits until TWRP has been up for <see cref="SettleSeconds"/> (no wait at all when it has
+    /// been up longer) and its shell answers. Nothing needs the SD card: everything is staged in
+    /// TWRP's RAM. A shell wedged by the ntfs-3g mount deadlock is broken from here.
     /// </summary>
     private static async Task<bool> SettleTwrpAsync(IProgress<string> log, CancellationToken ct)
     {
@@ -446,25 +460,41 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             return false;
         }
-        for (var i = 0; i < 60; i++)
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(90);
+        var reported = false;
+        var reportedHung = false;
+        while (DateTime.UtcNow < deadline)
         {
             try
             {
+                // A TWRP wedged by the ntfs-3g FUSE self-deadlock never answers a shell. The baked-in
+                // on-phone watchdog usually clears it; this breaks it from the host too.
+                if (!await twrp.EnsureResponsiveAsync(ct))
+                {
+                    if (!reportedHung)
+                    {
+                        log.Report("TWRP isn't answering yet (checking for the NTFS mount deadlock)...");
+                        reportedHung = true;
+                    }
+                    continue;
+                }
                 var up = await twrp.UptimeSecondsAsync(ct);
-                if (up >= 150 && await twrp.IsMountedAsync("/external_sd", ct))
+                if (up >= SettleSeconds)
                 {
                     return true;
                 }
-                if (i == 0)
+                if (!reported)
                 {
-                    log.Report($"Letting TWRP settle (up {up:0} s; needs 150 s and the SD card)...");
+                    log.Report($"TWRP started {up:0} s ago; giving it {SettleSeconds - up:0} s more...");
+                    reported = true;
                 }
+                await Task.Delay(TimeSpan.FromSeconds(Math.Min(SettleSeconds - up, 5)), ct);
             }
-            catch (InvalidOperationException)
+            catch (Exception e) when (e is InvalidOperationException or TimeoutException)
             {
-                // adb reconnecting; keep waiting.
+                // adb reconnecting, or a shell timed out; try again shortly.
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
             }
-            await Task.Delay(TimeSpan.FromSeconds(5), ct);
         }
         return false;
     }
@@ -483,9 +513,9 @@ public sealed partial class InstallPage : Page, IWizardStep
         }
         if (!await SettleTwrpAsync(log, ct))
         {
-            return (false, "TWRP's connection hasn't settled (it needs about 2.5 minutes and the SD card). Press Resume shortly.");
+            return (false, "TWRP isn't answering over USB. Check the cable, then press Resume.");
         }
-        var dir = Path.Combine(AppServices.BackupDirectory, dev.Serial);
+        var dir = AppServices.BackupFolderFor(dev.Serial);
         var manifest = await new BackupService(twrp).BackupAsync(dir, dev.Model ?? "SM-G965F", dev.Serial, log, ct);
         return (true, $"Backed up {manifest.Partitions.Count} partitions to {dir}. Keep this folder safe.");
     }
@@ -513,14 +543,18 @@ public sealed partial class InstallPage : Page, IWizardStep
         var editions = await media.GetEditionsAsync(install, ct);
         var chosen = WindowsMedia.ChooseEdition(editions);
         var build = await media.GetBuildAsync(install, chosen.Index, ct);
-        if (AppServices.Toolset.LoadFirmwareCatalog() is { } catalog && build is not null && catalog.ForMediaBuild(build) is null)
-        {
-            return (false, $"This media is Windows {build}. The phone's UEFI starts exactly one Windows build per firmware image, "
-                + $"and the available images are for {catalog.SupportedBuilds}. Choose media with one of those builds on the Windows page.");
-        }
         AppServices.InstallImagePath = install;
         AppServices.EditionIndex = chosen.Index;
-        return (true, $"Using {chosen.Name}{(build is null ? "" : $" {build}")} (index {chosen.Index}) from {Path.GetFileName(install)}.");
+        AppServices.MediaBuild = build;
+        var note = "";
+        if (AppServices.Toolset.LoadFirmwareCatalog() is { } catalog && catalog.Choose(build) is { Exact: false } nearest)
+        {
+            // Any build may be installed; only warn that its firmware was made for another build.
+            note = $" Not a validated build: it will use the UEFI for Windows {nearest.Image.Windows} (validated: {catalog.SupportedBuilds}), "
+                + "so Windows may stop at the Samsung logo.";
+            AppServices.Log($"warning: Windows {build ?? "(unknown build)"} has no matching UEFI; using the one for {nearest.Image.Windows}.");
+        }
+        return (true, $"Using {chosen.Name}{(build is null ? "" : $" {build}")} (index {chosen.Index}) from {Path.GetFileName(install)}.{note}");
     }
 
     private static async Task<(bool, string)> RunImageAsync(IProgress<string> log, CancellationToken ct)
@@ -550,17 +584,20 @@ public sealed partial class InstallPage : Page, IWizardStep
             AppServices.Unattend, outDir, log, ct);
         AppServices.Built = built;
         var firmwareNote = "";
-        if (AppServices.Toolset.LoadFirmwareCatalog() is { } catalog)
+        if (AppServices.Toolset.LoadFirmwareCatalog() is { } catalog && catalog.Choose(AppServices.MediaBuild, built.LoaderSha256, built.KernelSha256) is { } firmware)
         {
-            var firmware = catalog.ForBootFiles(built.LoaderSha256, built.KernelSha256);
-            if (firmware is null)
-            {
-                return (false, $"The image's boot loader ({built.LoaderSha256[..12]}…) and kernel ({built.KernelSha256[..12]}…) match none of the "
-                    + $"UEFI builds ({catalog.SupportedBuilds}); the phone would stop at the Samsung logo. Use media with a supported build.");
-            }
-            AppServices.State.FirmwareFile = firmware.File;
+            AppServices.State.FirmwareFile = firmware.Image.File;
             AppServices.SaveState();
-            firmwareNote = $", UEFI for Windows {firmware.Windows}";
+            if (firmware.Exact)
+            {
+                firmwareNote = $", UEFI for Windows {firmware.Image.Windows}";
+            }
+            else
+            {
+                firmwareNote = $". No UEFI was built for this Windows (boot loader {built.LoaderSha256[..12]}…, kernel {built.KernelSha256[..12]}…); "
+                    + $"using the one for Windows {firmware.Image.Windows}, so Windows may stop at the Samsung logo";
+                log.Report($"warning: no UEFI matches this image's boot loader and kernel; using the one for Windows {firmware.Image.Windows}.");
+            }
         }
         return (true, $"Windows image built: {built.WindowsBytes >> 20} MiB volume + boot files, {drivers.Count} drivers, {AppServices.Profile} profile{firmwareNote}.");
     }
@@ -617,8 +654,8 @@ public sealed partial class InstallPage : Page, IWizardStep
     private static async Task<(bool, string)> RunTransferAsync(IProgress<string> log, CancellationToken ct)
     {
         await RefreshDeviceAsync(ct);
-        var twrp = RequireTwrp(out _, out var err);
-        if (twrp is null)
+        var twrp = RequireTwrp(out var dev, out var err);
+        if (twrp is null || dev is null)
         {
             return (false, err);
         }
@@ -640,6 +677,8 @@ public sealed partial class InstallPage : Page, IWizardStep
                 log.Report("Writing the Windows boot files...");
                 await new BootFilesService(twrp).WriteAsync(AppServices.EspDirectory, log, ct);
             }
+            await new GptTypeService(twrp).EnsureEspTypeAsync(PartitionMap.SecondaryEfiSystemPartition,
+                Path.Combine(AppServices.BackupFolderFor(dev.Serial), "gpt"), log, ct);
         }
         finally
         {
@@ -664,10 +703,10 @@ public sealed partial class InstallPage : Page, IWizardStep
         if (AppServices.Toolset.LoadFirmwareCatalog() is { } catalog)
         {
             var firmware = catalog.Images.FirstOrDefault(i => i.File == AppServices.State.FirmwareFile)
-                ?? (AppServices.Built is { } b ? catalog.ForBootFiles(b.LoaderSha256, b.KernelSha256) : null);
+                ?? catalog.Choose(AppServices.MediaBuild, AppServices.Built?.LoaderSha256, AppServices.Built?.KernelSha256)?.Image;
             if (firmware is null)
             {
-                return (false, "The installer doesn't know which UEFI matches the Windows image. Run Build the Windows image again, then press Resume.");
+                return (false, "The UEFI catalog has no images. Import the UEFI images again on the Set up page, then press Resume.");
             }
             if (!catalog.Verify(firmware))
             {
@@ -697,46 +736,99 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             return (true, "Unplug the phone and power it on to start Windows.");
         }
-        var modules = AppServices.Toolset.TwrpModulesDirectory;
-        for (var attempt = 1; ; attempt++)
+        var modules = AppServices.Toolset.EnsureTwrpModules();
+        var tries = 0;
+        for (var loop = 1; loop <= MaxStarts * 2; loop++)
         {
-            if (attempt > 1)
+            if (loop > 1)
             {
                 dev = await RefreshDeviceAsync(ct) ?? dev;
             }
             if (dev.Mode == DeviceMode.Recovery && AppServices.Twrp(dev.Serial) is { } twrp)
             {
-                // A leftover boot-recovery request or pending watchdog record would send the phone straight back to TWRP.
-                await new BootRouteService(twrp).ClearAsync(modules, log, ct);
+                // A leftover boot-recovery request, a pending watchdog record or anything left in the
+                // retained startup records would send the phone straight back to TWRP or halt UEFI at
+                // the Samsung logo (stock Android, Download mode and power loss all leave some behind).
+                var records = await new BootRouteService(twrp).ClearAsync(modules, log, ct);
+                SaveStartupRecords(records);
+                if (records is { Ready: false })
+                {
+                    return (false, "The phone's startup records could not be cleared, so Windows would stop at the Samsung logo. "
+                        + "Restart TWRP (hold Volume Down + Power, then immediately Volume Up + Bixby + Power) and press Resume.");
+                }
                 await twrp.ClearInstallStatusAsync(ct);
                 await twrp.ShellAsync("umount /data 2>/dev/null; umount /cache 2>/dev/null; umount /sdcard 2>/dev/null; sync; true", ct);
             }
-            log.Report(attempt == 1 ? "Restarting into Windows..." : "Restarting into Windows again...");
+            log.Report(tries == 0 ? "Restarting into Windows..." : $"Starting Windows, attempt {tries + 1} of {MaxStarts}...");
             await AppServices.Device.RebootAsync(dev.Serial, RebootTarget.System, ct);
 
             var (returned, after, record) = await WatchFirstBootAsync(dev.Serial, modules, log, ct);
             if (!returned)
             {
                 return (true, "Windows is starting. The first start and setup take several minutes and restart the phone once. "
-                    + "If it stays on the Samsung logo for more than 5 minutes, hold Volume Down + Power to restart it.");
+                    + "If it stays on the Samsung logo for more than 5 minutes, hold Volume Down + Power until the screen goes off, "
+                    + "then immediately hold Volume Up + Bixby + Power to open TWRP, and tap Continue there.");
             }
-            // After a forced restart the record is in a state TWRP can't acknowledge, so the next start only
-            // latches: it finds a stale boot owner and returns in ~25 s without trying Windows. That latch can
-            // be acknowledged, and then one real attempt is allowed.
-            if (attempt == 1 && after < QuickBounce && record is { IsRecoveryPending: true, Reason: RecoveryRecord.StaleBootOwnerReason })
+            if (after < QuickBounce)
             {
-                log.Report("The firmware's recovery latch sent the phone back without trying Windows (expected once after a forced restart). "
-                    + "Acknowledging it and trying again...");
+                // The firmware's recovery latch: a stale boot owner sends it back in ~25 s without trying
+                // Windows. The records are cleared before every start, so this is rare; it doesn't count.
+                log.Report("The firmware sent the phone back without trying Windows. Clearing its records and trying again...");
                 continue;
             }
-            return (false, "Windows did not start; the phone returned to TWRP"
-                + (record is null ? "." : $" (watchdog record: {record}).")
-                + " Press Resume to try again, or open Device tools to collect diagnostics.");
+            // A real attempt that stalled before the Windows dots: the watchdog returns in about two minutes.
+            // Measured on the reference phone, Windows starts on roughly one attempt in four to ten, so retry.
+            tries++;
+            if (tries >= MaxStarts)
+            {
+                return (false, $"Windows did not start in {tries} attempts; each time the phone's watchdog returned it to TWRP"
+                    + (record is null ? "." : $" (last record: {record}).")
+                    + " Press Resume to try again, or open Device tools to collect diagnostics.");
+            }
+            log.Report($"Windows didn't start this time (attempt {tries} of {MaxStarts}; the watchdog returned the phone after "
+                + $"{after.TotalSeconds:0} s). Boot on this phone often takes several tries; trying again...");
         }
+        return (false, "The phone kept returning to TWRP before trying Windows. Press Resume to try again.");
     }
+
+    /// <summary>
+    /// Real start attempts before giving up. The reference phone historically needed up to about ten
+    /// (research: boot succeeds roughly one time in four to ten; failures return in ~122 s).
+    /// </summary>
+    private const int MaxStarts = 12;
 
     /// <summary>A return to TWRP faster than this means Windows was never attempted.</summary>
     private static readonly TimeSpan QuickBounce = TimeSpan.FromSeconds(75);
+
+    /// <summary>
+    /// Keeps the startup records the installer found (and cleared) in the logs folder, so a start that
+    /// still fails can be diagnosed from what the phone held. Only written when something was set.
+    /// </summary>
+    private static void SaveStartupRecords(StartupClearResult? result)
+    {
+        if (result is null || result.Before.ReadyToStart)
+        {
+            return;
+        }
+        try
+        {
+            Directory.CreateDirectory(AppServices.LogDirectory);
+            var file = Path.Combine(AppServices.LogDirectory, $"startup-records-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+            File.WriteAllLines(file,
+            [
+                $"recovery record (RWD1): {result.Before.Rwd1Kind}",
+                $"  {Convert.ToHexString(result.Before.Rwd1Bytes)}",
+                $"startup record (P3): {result.Before.P3Kind}",
+                $"  {Convert.ToHexString(result.Before.P3Bytes)}",
+                $"cleared: {(result.Cleared.Count == 0 ? "nothing" : string.Join(", ", result.Cleared))}",
+                $"read back clear: {result.Ready}",
+            ]);
+        }
+        catch (IOException)
+        {
+            // Diagnostics only.
+        }
+    }
 
     /// <summary>
     /// Windows exposes no adb, so success is the phone staying away for four minutes; a failed start
@@ -781,7 +873,7 @@ public sealed partial class InstallPage : Page, IWizardStep
     {
         ResultBar.Severity = severity;
         ResultBar.Title = title;
-        ResultBar.Message = message;
+        ResultBar.Message = AppServices.Redact(message);
         ResultBar.ActionButton = null;
         if (action is { } a)
         {

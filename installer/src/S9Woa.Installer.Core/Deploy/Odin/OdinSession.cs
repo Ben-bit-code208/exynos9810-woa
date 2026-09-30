@@ -119,6 +119,14 @@ public sealed class OdinSession
         {
             throw new ArgumentOutOfRangeException(nameof(length));
         }
+        if (RequiresSparseImage(entry.PartitionName) && !StartsWithSparseMagic(data))
+        {
+            throw new OdinException(
+                $"{entry.PartitionName} must be flashed as an Android sparse image. The bootloader writes this partition "
+                + "through its filesystem path and rejects a raw image when the session ends: S-Boot logs "
+                + "\"Invalid Magic Code! 0x0\" and an eMMC write error (-1), and Odin reports RQT_CLOSE / a failed "
+                + "write. Convert the image to sparse (e.g. img2simg) before flashing, or write it from TWRP instead.");
+        }
         Control(FileTransfer, 0x00, "Start file transfer");
 
         var sequenceBytes = (long)FilePartSize * PartsPerSequence;
@@ -168,6 +176,30 @@ public sealed class OdinSession
     public void EndSession() => Control(EndSessionType, 0x00, "End session");
 
     public void Reboot() => Control(EndSessionType, 0x01, "Reboot");
+
+    /// <summary>Android sparse-image magic (0xED26FF3A), little-endian on disk.</summary>
+    private static readonly byte[] SparseMagic = [0x3A, 0xFF, 0x26, 0xED];
+
+    /// <summary>
+    /// Partitions the bootloader writes through its filesystem path, which only accepts an Android
+    /// sparse image; a raw image fails at session close ("Invalid Magic Code! 0x0"). RECOVERY, BOOT
+    /// and the other raw partitions are unaffected.
+    /// </summary>
+    internal static bool RequiresSparseImage(string partitionName) =>
+        partitionName.Equals("USERDATA", StringComparison.OrdinalIgnoreCase);
+
+    private static bool StartsWithSparseMagic(Stream data)
+    {
+        if (!data.CanSeek)
+        {
+            return true; // cannot peek a forward-only stream; don't block what we can't inspect
+        }
+        var origin = data.Position;
+        Span<byte> head = stackalloc byte[4];
+        var read = data.Read(head);
+        data.Position = origin;
+        return read == 4 && head.SequenceEqual(SparseMagic);
+    }
 
     internal static byte[] Packet(int type, int request, PacketFill? fill = null)
     {

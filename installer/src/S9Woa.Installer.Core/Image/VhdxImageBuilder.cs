@@ -118,7 +118,7 @@ public sealed class VhdxImageBuilder
             log?.Report("Writing the OOBE answer file...");
             var unattendPath = Path.Combine(winRoot, UnattendXml.RelativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(unattendPath)!);
-            await File.WriteAllTextAsync(unattendPath, UnattendXml.Build(unattend), ct).ConfigureAwait(false);
+            await File.WriteAllBytesAsync(unattendPath, UnattendXml.BuildBytes(unattend), ct).ConfigureAwait(false);
 
             log?.Report("Writing UEFI boot files with bcdboot...");
             await WriteBootFilesAsync($"{winRoot}Windows", esp, ct).ConfigureAwait(false);

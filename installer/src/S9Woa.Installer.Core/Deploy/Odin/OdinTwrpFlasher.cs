@@ -121,11 +121,14 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
     public Task<bool> IsAvailableAsync(CancellationToken ct = default) => Task.FromResult(FindPort() is not null);
 
     /// <summary>
-    /// After flashing, also write Android's <c>boot-recovery</c> request to MISC and reboot, so the
-    /// bootloader starts TWRP by itself (Android never runs, so it cannot restore stock recovery).
-    /// The installer clears the request once TWRP is up.
+    /// After flashing RECOVERY, also write the same TWRP image to BOOT in the same session and
+    /// restart the phone, so it starts TWRP by itself: Android never runs (it would put its own
+    /// recovery back), and the installer replaces BOOT with the UEFI later anyway. This is how
+    /// Samsung's own firmware packages flash BOOT and RECOVERY together; the Android boot-recovery
+    /// request in MISC is not an option on this phone, because its bootloader either fails the
+    /// session (-1) or stops answering when MISC is written in Download mode.
     /// </summary>
-    public bool RestartIntoRecovery { get; init; } = true;
+    public bool StartTwrpAfterFlash { get; init; } = true;
 
     public async Task<bool> FlashRecoveryAsync(string twrpImage, IProgress<string>? log = null, CancellationToken ct = default)
     {
@@ -151,23 +154,39 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
         var pit = Pit.Parse(odin.DumpPit());
         var recovery = Pit.Find(pit, "RECOVERY")
             ?? throw new OdinException($"The phone's partition table ({pit.Count} partitions) has no RECOVERY partition.");
-        var misc = RestartIntoRecovery ? Pit.Find(pit, "MISC") : null;
+        var boot = StartTwrpAfterFlash ? Pit.Find(pit, "BOOT") : null;
         log?.Report($"RECOVERY is partition {recovery.Identifier} ({recovery.FlashFileName}).");
 
         using var image = File.OpenRead(twrpImage);
         var length = image.Length;
-        odin.SetTotalBytes(length);
-        log?.Report($"Flashing {Path.GetFileName(twrpImage)} ({length / 1024} KiB) to RECOVERY...");
-        var lastDecile = -1;
-        odin.FlashPartition(image, length, recovery, sent =>
+        var bootLength = boot is null ? 0 : UsedLength(image);
+        image.Position = 0;
+        if (boot is not null && bootLength > BootImage.BootPartitionBytes)
         {
-            var decile = (int)(sent * 10 / length);
+            log?.Report($"This TWRP image ({bootLength / 1024} KiB) is larger than BOOT, so the phone can't start it by itself.");
+            boot = null;
+        }
+        var total = boot is null ? length : length + bootLength;
+        odin.SetTotalBytes(total);
+        var lastDecile = -1;
+        void Progress(long done)
+        {
+            var decile = (int)(done * 10 / total);
             if (decile != lastDecile)
             {
                 lastDecile = decile;
                 log?.Report($"  {decile * 10}%");
             }
-        });
+        }
+
+        log?.Report($"Flashing {Path.GetFileName(twrpImage)} ({length / 1024} KiB) to RECOVERY...");
+        odin.FlashPartition(image, length, recovery, Progress);
+        if (boot is not null)
+        {
+            log?.Report("Writing TWRP to BOOT as well, so the phone starts it by itself (the UEFI replaces it later)...");
+            image.Position = 0;
+            odin.FlashPartition(image, bootLength, boot, sent => Progress(length + sent));
+        }
         try
         {
             odin.EndSession();
@@ -180,38 +199,49 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
             throw new OdinException($"The phone refused TWRP when the session ended ({e.Message}). {OdinSession.OfficialBinariesOnlyHelp}");
         }
         log?.Report("TWRP flashed.");
-        if (misc is null)
+        if (boot is null)
         {
             log?.Report("The phone stays in Download mode until you restart it.");
             return false;
         }
 
-        // A separate session, so a bootloader that won't take MISC can't cost the TWRP flash (it
-        // ends a combined session with -1 and nothing on screen). Without the request the phone
-        // must not simply reboot: Android would put its own recovery back.
-        var bcb = BootRouteService.BootRecoveryMessage();
-        try
-        {
-            log?.Report("Asking the bootloader to start TWRP next (MISC boot-recovery request)...");
-            odin.BeginSession();
-            odin.SetTotalBytes(bcb.Length);
-            odin.FlashPartition(new MemoryStream(bcb), bcb.Length, misc);
-            odin.EndSession();
-        }
-        catch (Exception e) when (e is OdinException or TimeoutException or IOException)
-        {
-            log?.Report($"The phone didn't take the request ({e.Message}); it has to be started into TWRP by hand.");
-            return false;
-        }
         log?.Report("Restarting the phone into TWRP...");
         try
         {
             odin.Reboot();
         }
-        catch (Exception e) when (e is OdinException or TimeoutException or IOException)
+        catch (Exception e) when (e is OdinException or TimeoutException or IOException or OperationCanceledException or InvalidOperationException)
         {
             // The phone often drops USB before answering the reboot request.
         }
         return true;
+    }
+
+    /// <summary>
+    /// How much of a recovery image to write to BOOT: the image without the zero padding a
+    /// full-partition image (a prebuilt WinRE recovery, or a RECOVERY dump) carries past its
+    /// sections, rounded up to a 4 KiB block. That is what lets a 65 MiB RECOVERY image start
+    /// from the 55 MiB BOOT partition.
+    /// </summary>
+    internal static long UsedLength(Stream image)
+    {
+        const int Block = 4096;
+        var buffer = new byte[1 << 20];
+        var end = image.Length;
+        while (end > 0)
+        {
+            var start = Math.Max(0, end - buffer.Length);
+            var count = (int)(end - start);
+            image.Position = start;
+            image.ReadExactly(buffer, 0, count);
+            var last = buffer.AsSpan(0, count).LastIndexOfAnyExcept((byte)0);
+            if (last >= 0)
+            {
+                var used = start + last + 1;
+                return Math.Min(image.Length, (used + Block - 1) / Block * Block);
+            }
+            end = start;
+        }
+        return 0;
     }
 }

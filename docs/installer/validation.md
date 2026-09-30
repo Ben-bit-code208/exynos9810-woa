@@ -1,15 +1,14 @@
 # On-device validation checklist
 
-This is the first end-to-end run on real hardware. The install stages are marked
-**Experimental** because they have not been validated on the device yet — this
-run is that validation. Work through it in order and note where it stops.
+Use this to validate the installer on real hardware (a new release, a new phone
+firmware or a new Windows build). Every stage passed it end to end on the
+reference phone, from stock Android to the Windows desktop. Work through it in
+order and note where it stops.
 
 ## Before you start
 
 - [ ] Galaxy S9+ **SM-G965F** (Exynos 9810). No other model.
 - [ ] A full charge, and a **USB cable that does data** (many only charge).
-- [ ] A microSD card in the phone (partition backups and image windows stage
-      through `/external_sd`).
 - [ ] On the PC: run the installer **as administrator**.
 - [ ] Complete the **Set up** page: *Set up automatically* installs adb, Heimdall
       and Zadig and downloads the verified UEFI and driver payloads; you add the
@@ -19,28 +18,32 @@ run is that validation. Work through it in order and note where it stops.
 
 ## Run
 
-1. **Enable experimental steps.** On the Install page tick *Run experimental
-   steps*. Nothing destructive runs until you do.
+1. **Start.** On the Install page press *Install*. Nothing is written to the
+   phone before the backup step.
 2. **Check this PC / Identify the phone.** These must pass green. If the phone
    shows as unauthorized, accept the debugging prompt on the phone.
-3. **Get Windows / Build the Windows image.** Pick your Windows 11 **22621/22631
-   ARM64** media and your account on the Windows page first. The image build runs
+3. **Get Windows / Build the Windows image.** Pick any Windows 11 **ARM64**
+   media (22621.2428 and 22621.7582 have matching UEFI builds; other builds get the
+   nearest one and may stop at the Samsung logo) and your account on the Windows page first. The image build runs
    entirely on the PC (30+ minutes) and produces `work\out\windows.img` and
    `work\out\esp`. ✅ Confirm both exist before continuing.
 4. **Unlock the bootloader.** Guided — follow the on-screen steps. This wipes
    Android. Re-enable USB debugging afterwards.
-5. **Install TWRP.** Put the phone in Download mode when asked. Boot TWRP
-   immediately after flashing (Volume Up + Bixby + Power) so stock recovery is
-   not restored.
-6. **Back up the phone.** ✅ Confirm `backups\<serial>\efs.img` and
+5. **Install TWRP.** The installer restarts the phone into Download mode, writes
+   TWRP to RECOVERY and BOOT, and restarts it straight into TWRP. ✅ Confirm the
+   phone shows TWRP without any key presses. If Android starts instead, report it:
+   Android restores its own recovery.
+6. **Back up the phone.** ✅ Confirm `backups\phone-<hash>\efs.img` and
    `backup-manifest.json` exist and verified. **Copy this folder somewhere safe
    now** — it is how you return to stock.
 7. **Prepare partitions.** Verifies the layout by name; no writes.
 8. **Copy Windows to the phone.** Writes `windows.img` to USERDATA and the boot
    files to the EFI partition, verifying every window. This is long.
-9. **Install UEFI.** Writes `uefi.img` to BOOT. RECOVERY keeps TWRP.
-10. **First boot.** The phone reboots into Windows; OOBE finishes on its own and
-    signs you in to the account you chose.
+9. **Install UEFI.** Writes the UEFI build for your Windows build (from
+   `firmware.json`) to BOOT. RECOVERY keeps TWRP.
+10. **First boot.** The installer clears the phone's startup records, the phone
+    reboots into Windows, and OOBE finishes on its own (at 275 DPI display
+    scaling) and signs you in to the account you chose.
 
 ## What to record if it stops
 

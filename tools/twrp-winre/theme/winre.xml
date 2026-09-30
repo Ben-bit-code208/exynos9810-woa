@@ -10,8 +10,11 @@
 	stay circular on the 1440x2960 panel.
 
 	'main' is the entry page TWRP always jumps to, so it is the WinRE screen; the
-	stock TWRP menu is renamed to twrp_main/twrp_main2 by the builder. That also
-	makes every stock Home button land back on WinRE instead of the TWRP grid.
+	stock TWRP menu is renamed to twrp_main/twrp_main2 by the builder (see
+	reskin.xml). That also makes every stock Home button land back on WinRE
+	instead of the TWRP grid. The builder likewise hands this file the names
+	TWRP navigates to by itself - lock, singleaction_page, action_page and
+	action_complete - so those render in the WinRE look too.
 
 	Device traps encoded here, each learned the hard way (see the research
 	tools/twrp-winre README and this repo's docs):
@@ -20,50 +23,150 @@
 	    "openrecoveryscript" (which reboots to Android on success);
 	  * every terminalcommand runs through /sbin/winre-gui.sh so the boot-log
 	    chatter is scrolled off first;
-	  * the copy screen's trigger is a single winre_push != "0" condition; a
-	    var2="" compare is evaluated as false by TWRP and silently disables it;
-	  * every page has hardware back+home handlers so no variable-gated page can
-	    become a dead end.
+	  * a var2="" compare is evaluated as false by TWRP and silently disables
+	    the condition it sits in, so none is ever written;
+	  * every winre_* page has hardware back+home handlers so no page can
+	    become a dead end;
+	  * the install screen takes its live text and progress from Android
+	    properties (%property.s9woa.*%), which TWRP re-reads on every draw, so
+	    the watcher never has to poke a GUI variable through openrecoveryscript
+	    - each such poke flashes singleaction_page. A <text> showing a property
+	    only refreshes through GUIText's shared every-fourth-update counter,
+	    which reaches every text on a page only when the page has an ODD number
+	    of visible texts: the install screen keeps five.
 -->
 <recovery>
+	<templates>
+		<!-- The body of the "Installing Windows" screen. Shared by winre_install
+		     and singleaction_page: every openrecoveryscript command passes
+		     through singleaction_page, so if one arrives while this screen is up
+		     it draws the very same pixels and the bounce cannot be seen. Every
+		     object is conditioned on s9woa.show, which the watcher sets before
+		     it raises the screen; conditions are evaluated when a page is
+		     entered, which is exactly when a bounce happens. -->
+		<template name="winre_install_body">
+			<image>
+				<condition var1="property.s9woa.show" var2="1"/>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_back_x%" y="%winre_back_y%" placement="4"/>
+			</image>
+			<text color="%winre_text%">
+				<condition var1="property.s9woa.show" var2="1"/>
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
+				<text>Installing Windows</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<condition var1="property.s9woa.show" var2="1"/>
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
+				<text>%property.s9woa.label%</text>
+			</text>
+			<!-- Determinate: bound straight to the installer's percentage. -->
+			<progressbar>
+				<conditions>
+					<condition var1="property.s9woa.show" var2="1"/>
+					<condition var1="property.s9woa.mode" var2="percent"/>
+				</conditions>
+				<placement x="%winre_bar_x%" y="%winre_bar_y%"/>
+				<resource empty="winre_pbar_empty" full="winre_pbar_full"/>
+				<data name="property.s9woa.pct"/>
+			</progressbar>
+			<!-- Phases with no percentage get the sweep instead. -->
+			<animation>
+				<conditions>
+					<condition var1="property.s9woa.show" var2="1"/>
+					<condition var1="property.s9woa.mode" var2="busy"/>
+				</conditions>
+				<placement x="%winre_bar_x%" y="%winre_bar_y%"/>
+				<resource name="winre_bar"/>
+				<speed fps="24" render="1"/>
+				<loop frame="1"/>
+			</animation>
+			<!-- A single '%' inside a property value is safe: gui_parse_text
+			     finds no closing '%' after it. Keep this text on its own. -->
+			<text color="%winre_text_dim%">
+				<condition var1="property.s9woa.show" var2="1"/>
+				<font resource="winre_small"/>
+				<placement x="%center_x%" y="%winre_install_detail_y%" placement="5"/>
+				<text>%property.s9woa.detail%</text>
+			</text>
+			<text color="%winre_stamp%">
+				<condition var1="property.s9woa.show" var2="1"/>
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_install_foot_y%" placement="5"/>
+				<text>Please do not disconnect the phone</text>
+			</text>
+			<text color="%winre_stamp%">
+				<condition var1="property.s9woa.show" var2="1"/>
+				<font resource="winre_small"/>
+				<placement x="%center_x%" y="%winre_stamp_y%" placement="5"/>
+				<text>star2lte | %tw_version%</text>
+			</text>
+		</template>
+	</templates>
+
 	<pages>
 		<!-- Entry point. Mirrors the stock 'main' page: reset the action
-		     variables and the copy-screen flag before drawing anything. -->
+		     variables before drawing anything. -->
 		<page name="main">
 			<action>
 				<actions>
-					<!-- 0 = never blank. TWRP only raises the swipe-to-unlock
-					     overlay after the blank timer fires, so this is what
-					     actually disables the lock screen; the neutered 'lock'
+					<!-- 0 = never blank. TWRP only raises the lock overlay
+					     after the blank timer fires, so this is what actually
+					     keeps the lock screen away; the tap-anywhere 'lock'
 					     page below is the backstop. Set here rather than from
 					     the persisted setting, which lives on /data and is not
 					     readable until it is decrypted. -->
 					<action function="set">tw_screen_timeout_secs=0</action>
 					<action function="set">tw_clear_destination=winre_home</action>
-					<!-- Home is the escape hatch from the copy screen, and it
-					     works by clearing the flag the screen keys off. Also the
-					     boot-time initialisation: an unset variable reads as "",
-					     which must not look like "a copy is running". -->
-					<action function="set">winre_push=0</action>
-					<action function="set">winre_push_sub=Please wait</action>
-					<!-- Where the copy screen returns to. The watcher rewrites
-					     this to whatever page it interrupted and resets it here
-					     afterwards. -->
-					<action function="set">winre_push_back=winre_home</action>
 					<action function="page">clear_vars</action>
 				</actions>
 			</action>
 		</page>
 
-		<!-- The stock swipe-to-unlock page is renamed to twrp_lock by the
-		     builder and this takes its name. TWRP raises the overlay by name
-		     from C++, so the page has to keep existing; it just dismisses itself
-		     the moment it is raised. -->
+		<!-- The lock overlay TWRP raises by name when the blank timer fires
+		     (the stock swipe page is renamed to twrp_lock). It must dismiss
+		     from a touch, NOT from its own load action: TWRP runs an overlay's
+		     page actions BEFORE it pushes the overlay, so a self-dismissing
+		     page pops nothing and then sits on top as an invisible overlay that
+		     swallows every touch. Any tap, Back or Home unlocks. -->
 		<page name="lock">
+			<background color="%winre_bg%"/>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_lock_time_y%" placement="5"/>
+				<text>%tw_time%</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_lock_sub_y%" placement="5"/>
+				<text>Locked</text>
+			</text>
+			<text color="%winre_stamp%">
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_install_foot_y%" placement="5"/>
+				<text>Tap anywhere to continue</text>
+			</text>
+
+			<button>
+				<placement x="0" y="0" w="%screen_width%" h="%screen_height%"/>
+				<fill color="%winre_clear%"/>
+				<action function="overlay"/>
+			</button>
+
 			<action>
-				<actions>
-					<action function="overlay"/>
-				</actions>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="overlay"/>
+			</action>
+			<action>
+				<touch key="home"/>
+				<action function="overlay"/>
 			</action>
 		</page>
 
@@ -166,12 +269,75 @@
 				<text>star2lte | %tw_version%</text>
 			</text>
 
-			<!-- Raise the copy screen if the installer starts writing while the
-			     idle menu is up. A single != "0" compare, never an empty one. -->
 			<action>
-				<condition var1="winre_push" op="!=" var2="0"/>
+				<touch key="home"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="back"/>
+				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<!-- ====================== Installing Windows ======================= -->
+		<!-- Raised and cleared by /sbin/winre-statuswatch.sh with ONE
+		     `twrp changepage=` each way. changepage is the only
+		     openrecoveryscript command TWRP serves directly on the GUI thread;
+		     every other one (`twrp set`, ...) is run as an action through
+		     singleaction_page and shows as a flash. The watcher only raises
+		     this screen over the static WinRE menus (its RAISE_PAGES), never
+		     over a running report or a confirmation.
+
+		     Everything that changes while it is up comes from Android
+		     properties the watcher sets with plain setprop from the
+		     installer's status file (/tmp/s9woa/status):
+		       s9woa.show    1 while this screen is meant to be up
+		       s9woa.mode    percent | busy (determinate bar or sweep)
+		       s9woa.label   the phase, e.g. "Copying Windows"
+		       s9woa.pct     0..100, bound to the progress bar
+		       s9woa.detail  e.g. "37% complete, 12.1 of 32.6 GB"
+		     TWRP reads property.* afresh on every draw, so the bar and the
+		     text move with no page change at all. -->
+		<page name="winre_install">
+			<background color="%winre_bg%"/>
+
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
+				<loop frame="1"/>
+			</animation>
+
+			<template name="winre_install_body"/>
+
+			<!-- Always a way out, even if the watcher died: the arrow (drawn by
+			     the body) and Back/Home go to 'main'. No font on this button, so
+			     it adds no text to the page (see the odd-count rule at the top). -->
+			<button>
+				<placement x="0" y="%winre_back_hit_y%" w="240" h="180"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">main</action>
+			</button>
+
+			<action>
 				<actions>
-					<action function="page">winre_push</action>
+					<!-- Keep the display awake while Windows is written. -->
+					<action function="set">tw_screen_timeout_secs=0</action>
+					<!-- GUIProgressBar leaves its slide counter uninitialised
+					     and, when it is non-zero, writes its own value back into
+					     the bound variable on every update. Any change to
+					     ui_progress_frames zeroes it, so the bar can never
+					     clobber s9woa.pct. -->
+					<action function="set">ui_progress_frames=0</action>
 				</actions>
 			</action>
 
@@ -193,19 +359,15 @@
 			</action>
 		</page>
 
-		<!-- ====================== Installing Windows ======================= -->
-		<!-- Raised by /sbin/winre-statuswatch.sh, which watches the installer's
-		     status file (/tmp/s9woa/status) and, as a fallback, any process
-		     writing to /dev/block/*, then pokes winre_push through
-		     openrecoveryscript. The trigger lives ONLY on the static menu pages
-		     (see the watcher's RAISE_PAGES): a write starting must never yank the
-		     screen away from a running report or a confirmation. -->
-		<page name="winre_push">
+		<!-- Fallback the watcher raises instead when setprop does not work on
+		     the phone (it checks at start): nothing live, just the sweep. -->
+		<page name="winre_install_static">
 			<background color="%winre_bg%"/>
+
 			<animation>
 				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
 				<resource name="winre_cogs"/>
-				<speed fps="24" render="1"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
 				<loop frame="1"/>
 			</animation>
 			<text color="%winre_text%">
@@ -213,13 +375,10 @@
 				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
 				<text>Installing Windows</text>
 			</text>
-			<!-- The watcher parks the phase caption here (e.g. "Copying Windows"
-			     or "Copying Windows - 45%"); it changes only a few times over a
-			     copy, so the ORS bounce it costs is invisible. -->
 			<text color="%winre_text_dim%">
 				<font resource="winre_body"/>
 				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
-				<text>%winre_push_sub%</text>
+				<text>Copying Windows to the phone</text>
 			</text>
 			<animation>
 				<placement x="%winre_bar_x%" y="%winre_bar_y%"/>
@@ -228,20 +387,26 @@
 				<loop frame="1"/>
 			</animation>
 			<text color="%winre_stamp%">
-				<font resource="winre_small"/>
-				<placement x="%center_x%" y="%winre_push_name_y%" placement="5"/>
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_install_foot_y%" placement="5"/>
 				<text>Please do not disconnect the phone</text>
 			</text>
 
+			<button>
+				<placement x="0" y="%winre_back_hit_y%" w="240" h="180"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<action function="page">main</action>
+			</button>
+			<image>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_back_x%" y="%winre_back_y%" placement="4"/>
+			</image>
+
 			<action>
-				<condition var1="winre_push" op="=" var2="0"/>
-				<actions>
-					<action function="page">%winre_push_back%</action>
-				</actions>
+				<action function="set">tw_screen_timeout_secs=0</action>
 			</action>
 
-			<!-- Home/Back go through 'main', which resets winre_push, so the
-			     user can always walk out even if the watcher died mid-copy. -->
 			<action>
 				<touch key="home"/>
 				<action function="page">main</action>
@@ -423,13 +588,6 @@
 			</text>
 
 			<action>
-				<condition var1="winre_push" op="!=" var2="0"/>
-				<actions>
-					<action function="page">winre_push</action>
-				</actions>
-			</action>
-
-			<action>
 				<touch key="home"/>
 				<action function="page">main</action>
 			</action>
@@ -589,13 +747,6 @@
 			</text>
 
 			<action>
-				<condition var1="winre_push" op="!=" var2="0"/>
-				<actions>
-					<action function="page">winre_push</action>
-				</actions>
-			</action>
-
-			<action>
 				<touch key="home"/>
 				<action function="page">main</action>
 			</action>
@@ -682,7 +833,7 @@
 				</actions>
 			</button>
 			<image>
-				<image resource="winre_ic_disk"/>
+				<image resource="winre_ic_tools"/>
 				<placement x="%winre_icon_x%" y="%winre_r2_icon_y%" placement="4"/>
 			</image>
 			<text color="%winre_text%">
@@ -717,13 +868,6 @@
 				<placement x="%winre_text_x%" y="%winre_r3_desc_y%"/>
 				<text>Odin / Heimdall recovery path if a flash goes wrong</text>
 			</text>
-
-			<action>
-				<condition var1="winre_push" op="!=" var2="0"/>
-				<actions>
-					<action function="page">winre_push</action>
-				</actions>
-			</action>
 
 			<action>
 				<touch key="home"/>
@@ -933,13 +1077,6 @@
 			</button>
 
 			<action>
-				<condition var1="winre_push" op="!=" var2="0"/>
-				<actions>
-					<action function="page">winre_push</action>
-				</actions>
-			</action>
-
-			<action>
 				<touch key="home"/>
 				<action function="page">main</action>
 			</action>
@@ -963,7 +1100,7 @@
 			<animation>
 				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
 				<resource name="winre_cogs"/>
-				<speed fps="24" render="1"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
 				<loop frame="1"/>
 			</animation>
 			<text color="%winre_text%">
@@ -976,6 +1113,8 @@
 				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
 				<text>Continuing to Windows</text>
 			</text>
+			<!-- TWRP runs /sbin/rebootsystem.sh before this reboot, which clears the MISC
+			     request and the retained startup records (winre-actions.sh prepare-boot). -->
 			<action>
 				<action function="reboot">system</action>
 			</action>
@@ -998,7 +1137,7 @@
 			<animation>
 				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
 				<resource name="winre_cogs"/>
-				<speed fps="24" render="1"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
 				<loop frame="1"/>
 			</animation>
 			<text color="%winre_text%">
@@ -1033,7 +1172,7 @@
 			<animation>
 				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
 				<resource name="winre_cogs"/>
-				<speed fps="24" render="1"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
 				<loop frame="1"/>
 			</animation>
 			<text color="%winre_text%">
@@ -1068,7 +1207,7 @@
 			<animation>
 				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
 				<resource name="winre_cogs"/>
-				<speed fps="24" render="1"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
 				<loop frame="1"/>
 			</animation>
 			<text color="%winre_text%">
@@ -1091,6 +1230,240 @@
 			<action>
 				<touch key="back"/>
 				<action function="page">main</action>
+			</action>
+			<action>
+				<touch key="power+voldown"/>
+				<action function="screenshot"/>
+			</action>
+		</page>
+
+		<!-- ================= pages TWRP navigates to itself ================ -->
+		<!-- openrecoveryscript. TWRP switches to this page by name for every
+		     ORS command except changepage/reloadtheme/dumpstrings, runs the
+		     command as %tw_action% and then returns to the page it came from
+		     (tw_action2=page). The stock page is a blue header, the TeamWin
+		     logo and a console of red and white lines - the "blink" seen over
+		     the old copy screen. Here it is black with the gears where every
+		     WinRE wait screen has them and, while the install screen is up, the
+		     install screen itself (winre_install_body), so a stray command
+		     cannot be seen at all. The action logic is the stock contract. -->
+		<page name="singleaction_page">
+			<background color="%winre_bg%"/>
+
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
+				<loop frame="1"/>
+			</animation>
+
+			<template name="winre_install_body"/>
+
+			<text color="%winre_text%">
+				<condition var1="property.s9woa.show" op="!=" var2="1"/>
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
+				<text>Please wait</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<condition var1="property.s9woa.show" op="!=" var2="1"/>
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
+				<text>%tw_action_text1%</text>
+			</text>
+			<progressbar>
+				<condition var1="property.s9woa.show" op="!=" var2="1"/>
+				<placement x="%winre_bar_x%" y="%winre_bar_y%"/>
+				<resource empty="winre_pbar_empty" full="winre_pbar_full"/>
+				<data name="ui_progress"/>
+			</progressbar>
+
+			<action>
+				<action function="set">ui_progress_frames=0</action>
+			</action>
+
+			<action>
+				<condition var1="tw_operation_state" var2="1"/>
+				<actions>
+					<action function="set">tw_page_done=1</action>
+				</actions>
+			</action>
+
+			<action>
+				<condition var1="tw_has_action2" var2="0"/>
+				<actions>
+					<action function="%tw_action%">%tw_action_param%</action>
+				</actions>
+			</action>
+
+			<action>
+				<condition var1="tw_has_action2" var2="1"/>
+				<actions>
+					<action function="%tw_action%">%tw_action_param%</action>
+					<action function="%tw_action2%">%tw_action2_param%</action>
+				</actions>
+			</action>
+
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+		</page>
+
+		<!-- Every stock operation that starts from a swipe-to-confirm (wipe,
+		     format, repair, flash image, ...) runs here: WinRE "please wait"
+		     with the operation's own title and TWRP's progress. The log is
+		     not shown while it runs; action_complete offers it afterwards. -->
+		<page name="action_page">
+			<background color="%winre_bg%"/>
+
+			<animation>
+				<placement x="%winre_cogs_x%" y="%winre_cogs_wait_y%"/>
+				<resource name="winre_cogs"/>
+				<speed fps="%winre_cogs_fps%" render="1"/>
+				<loop frame="1"/>
+			</animation>
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%center_x%" y="%winre_wait_y%" placement="5"/>
+				<text>%tw_action_text1%</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<font resource="winre_body"/>
+				<placement x="%center_x%" y="%winre_wait_sub_y%" placement="5"/>
+				<text>%tw_action_text2%</text>
+			</text>
+			<progressbar>
+				<placement x="%winre_bar_x%" y="%winre_bar_y%"/>
+				<resource empty="winre_pbar_empty" full="winre_pbar_full"/>
+				<data name="ui_progress"/>
+			</progressbar>
+
+			<button>
+				<condition var1="tw_has_cancel" var2="1"/>
+				<placement x="%winre_btn_mid_x%" y="%winre_out_btn_y%" w="400" h="110"/>
+				<fill color="%winre_btn%"/>
+				<highlight color="%winre_btn_hi%"/>
+				<font resource="winre_title" color="%winre_text%"/>
+				<text>Cancel</text>
+				<action function="%tw_cancel_action%">%tw_cancel_param%</action>
+			</button>
+
+			<action>
+				<condition var1="tw_operation_state" var2="1"/>
+				<actions>
+					<action function="page">action_complete</action>
+				</actions>
+			</action>
+
+			<action>
+				<condition var1="tw_has_action2" var2="0"/>
+				<actions>
+					<action function="%tw_action%">%tw_action_param%</action>
+				</actions>
+			</action>
+
+			<action>
+				<condition var1="tw_has_action2" var2="1"/>
+				<actions>
+					<action function="%tw_action%">%tw_action_param%</action>
+					<action function="%tw_action2%">%tw_action2_param%</action>
+				</actions>
+			</action>
+
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
+			</action>
+		</page>
+
+		<!-- The result of a stock operation, WinRE style. The log is one tap
+		     away (the console overlay) instead of filling the screen. -->
+		<page name="action_complete">
+			<background color="%winre_bg%"/>
+
+			<button>
+				<placement x="0" y="%winre_back_hit_y%" w="240" h="180"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<actions>
+					<action function="set">tw_clear_destination=%tw_back%</action>
+					<action function="page">clear_vars</action>
+				</actions>
+			</button>
+			<image>
+				<image resource="winre_ic_back"/>
+				<placement x="%winre_back_x%" y="%winre_back_y%" placement="4"/>
+			</image>
+
+			<text color="%winre_text%">
+				<font resource="winre_h1"/>
+				<placement x="%winre_margin%" y="%winre_hdr_y%"/>
+				<text>%tw_complete_text1%</text>
+			</text>
+			<text color="%winre_text_dim%">
+				<condition var1="tw_operation_status" var2="0"/>
+				<font resource="winre_body"/>
+				<placement x="%winre_margin%" y="%winre_sub_y%"/>
+				<text>Successful</text>
+			</text>
+			<text color="%text_fail_color%">
+				<condition var1="tw_operation_status" op="!=" var2="0"/>
+				<font resource="winre_body"/>
+				<placement x="%winre_margin%" y="%winre_sub_y%"/>
+				<text>Failed. Show details for what went wrong.</text>
+			</text>
+
+			<button>
+				<placement x="%winre_margin%" y="%winre_r1_y%" w="400" h="110"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<font resource="winre_title" color="%winre_accent_text%"/>
+				<text>Show details</text>
+				<action function="overlay">slideout</action>
+			</button>
+
+			<button>
+				<placement x="%winre_margin%" y="%winre_out_btn_y%" w="400" h="110"/>
+				<fill color="%winre_btn%"/>
+				<highlight color="%winre_btn_hi%"/>
+				<font resource="winre_title" color="%winre_text%"/>
+				<text>Back</text>
+				<actions>
+					<action function="set">tw_clear_destination=%tw_back%</action>
+					<action function="page">clear_vars</action>
+				</actions>
+			</button>
+
+			<button>
+				<placement x="%winre_btn2_x%" y="%winre_out_btn_y%" w="400" h="110"/>
+				<fill color="%winre_clear%"/>
+				<highlight color="%winre_hi%"/>
+				<font resource="winre_title" color="%winre_text%"/>
+				<text>Restart</text>
+				<actions>
+					<action function="set">tw_back=twrp_main2</action>
+					<action function="page">reboot_system_routine</action>
+				</actions>
+			</button>
+
+			<action>
+				<touch key="home"/>
+				<actions>
+					<action function="set">tw_clear_destination=twrp_main2</action>
+					<action function="page">clear_vars</action>
+				</actions>
+			</action>
+			<action>
+				<touch key="back"/>
+				<actions>
+					<action function="set">tw_clear_destination=%tw_back%</action>
+					<action function="page">clear_vars</action>
+				</actions>
+			</action>
+			<action>
+				<touch key="power"/>
+				<action function="togglebacklight"/>
 			</action>
 			<action>
 				<touch key="power+voldown"/>
