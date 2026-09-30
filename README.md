@@ -14,12 +14,12 @@ Windows.
 
 ## 🎬 Watch it install
 
-*Video coming soon:* the whole installation, from a stock Galaxy S9+ to the
-Windows desktop.
+**[▶ Watch the whole installation on YouTube](https://youtu.be/i3sSkU9Lck8)**: from
+a stock Galaxy S9+ to the Windows desktop.
 
-<!-- VIDEO PLACEHOLDER: replace VIDEO_ID with the YouTube video id (the part after
-     watch?v=), then delete the "coming soon" line above and this comment's wrapper.
-[![Installing Windows 11 on the Galaxy S9+, from stock Android to the desktop](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
+<!-- Once the video is public, YouTube serves its thumbnail and this can become a
+     clickable preview:
+[![Installing Windows 11 on the Galaxy S9+, from stock Android to the desktop](https://img.youtube.com/vi/i3sSkU9Lck8/maxresdefault.jpg)](https://youtu.be/i3sSkU9Lck8)
 -->
 
 ## What's in the box
