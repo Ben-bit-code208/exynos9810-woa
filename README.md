@@ -14,13 +14,9 @@ Windows.
 
 ## 🎬 Watch it install
 
-**[▶ Watch the whole installation on YouTube](https://youtu.be/i3sSkU9Lck8)**: from
-a stock Galaxy S9+ to the Windows desktop.
+[![Windows 11 on your Galaxy S9+. The installer is out.](https://img.youtube.com/vi/i3sSkU9Lck8/maxresdefault.jpg)](https://youtu.be/i3sSkU9Lck8)
 
-<!-- Once the video is public, YouTube serves its thumbnail and this can become a
-     clickable preview:
-[![Installing Windows 11 on the Galaxy S9+, from stock Android to the desktop](https://img.youtube.com/vi/i3sSkU9Lck8/maxresdefault.jpg)](https://youtu.be/i3sSkU9Lck8)
--->
+The whole installation, from a stock Galaxy S9+ to the Windows desktop.
 
 ## What's in the box
 
