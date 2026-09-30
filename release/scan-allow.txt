@@ -26,3 +26,6 @@ tools/twrp-winre/assets/stock/*.png binary
 tools/twrp-winre/modules/*.ko binary
 # Open fonts of the published recovery, compiled from Selawik (SIL OFL 1.1) by make_fonts.py beside them.
 tools/twrp-winre/fonts/*.ttf binary
+# The support links name the author's Patreon/Ko-fi handle, which matches the Microsoft-internal pattern.
+.github/FUNDING.yml ms-internal
+README.md ms-internal

@@ -12,6 +12,16 @@ Windows.
 > as *coming soon* and the installer stops before them rather than guessing. Do
 > not point it at another model or firmware.
 
+## 🎬 Watch it install
+
+*Video coming soon:* the whole installation, from a stock Galaxy S9+ to the
+Windows desktop.
+
+<!-- VIDEO PLACEHOLDER: replace VIDEO_ID with the YouTube video id (the part after
+     watch?v=), then delete the "coming soon" line above and this comment's wrapper.
+[![Installing Windows 11 on the Galaxy S9+, from stock Android to the desktop](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=VIDEO_ID)
+-->
+
 ## What's in the box
 
 | Path | Component | License |
@@ -166,6 +176,13 @@ Installing Windows **erases Android** and touches low-level partitions. The
 installer backs up EFS, modem calibration and the partition table before any
 destructive step. Keep those backups: they are how you return to stock. There is
 no warranty — see the license.
+
+## ❤️ Support the Project
+
+If this project has helped you, please consider showing your support! A small
+donation helps me dedicate more time to projects like this.
+
+**[Patreon](https://patreon.com/ntdev) | [PayPal](https://paypal.me/ntdev2) | [Ko-fi](https://ko-fi.com/ntdev)**
 
 ## Credits
 
