@@ -17,7 +17,9 @@ jobs:
       - name: Leak scan
         run: python tools/release/scan.py
       - name: Importer tests
-        run: python -m pytest -q tools/release/tests
+        run: |
+          python -m pip install --quiet pytest
+          python -m pytest -q tools/release/tests
 
   installer:
     name: Build and test the installer
