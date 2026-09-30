@@ -65,7 +65,7 @@ public sealed partial class SetupPage : Page, IWizardStep
             : "Set up automatically installs the programs and downloads the verified boot files. Still needed: " + string.Join(", ", pending) + ".";
         AutoButton.IsEnabled = !_running && !complete;
         BuildFolderText.Text = AppServices.Toolset.Config.BuildFolder is { } f
-            ? $"Local build folder: {f}"
+            ? AppServices.Redact($"Local build folder: {f}")
             : "No local build folder. UEFI and drivers come from the latest release.";
         _complete = complete;
         StateChanged?.Invoke(this, EventArgs.Empty);

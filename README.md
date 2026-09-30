@@ -21,14 +21,20 @@ Windows.
 | `drivers/Exynos9810Hsi2c/` | HSI2C bus controller (SpbCx) the touchscreen sits on | BSD-2-Clause-Patent AND MS-PL (framework from Microsoft's SkeletonI2C sample) |
 | `drivers/S6SY761Touch/` | Touchscreen driver (derived from the upstream Linux `sec_ts`/`s6sy761` driver) | GPL-2.0-only |
 | `installer/` | WinUI 3 installer (`S9Woa.Installer.App`) over a reusable C# engine (`S9Woa.Installer.Core`) | BSD-2-Clause-Patent |
-| `tools/twrp-winre/` | The WinRE look the installer gives TWRP on your PC (theme, scripts, original artwork, GPL kernel modules) | BSD-2-Clause-Patent; modules GPL-2.0 |
+| `tools/twrp-winre/` | The WinRE look the installer gives TWRP on your PC (theme, scripts, original artwork, GPL kernel modules; `fonts/` holds the open fonts of the published recovery) | BSD-2-Clause-Patent; modules GPL-2.0; fonts SIL OFL 1.1 |
 | `tools/release/` | Release importer, leak scanner and release payload script | BSD-2-Clause-Patent |
 
-The [releases](../../releases) carry the built UEFI images (`firmware.json` plus
-one image per supported Windows build) and `drivers.zip` (the three driver
-packages, test-signed), all listed in `SHA256SUMS`. The installer downloads and
-verifies them for you. Windows itself is never redistributed: bring your own
-ARM64 media.
+The [releases](../../releases) carry everything else you need, all listed in
+`SHA256SUMS`:
+
+| Asset | What it is |
+|-------|------------|
+| `S9WoaInstaller-<version>-x64.zip` / `-arm64.zip` | The installer, ready to run (self-contained: no .NET or Windows App SDK install needed). Unzip and run `S9WoaInstaller.exe`. |
+| `firmware.json` + `star2lte-uefi-<build>.img` | The UEFI images, one per supported Windows build. The installer downloads and verifies them for you. |
+| `drivers.zip` | The UFS, HSI2C and touch driver packages (test-signed). Also downloaded by the installer. |
+| `star2lte-winre-recovery.img` | The WinRE-look TWRP, prebuilt from the official TWRP with open fonts. Optional: choose it on the Set up page instead of the official TWRP download. |
+
+Windows itself is never redistributed: bring your own ARM64 media.
 
 ## The installer
 
@@ -79,7 +85,7 @@ the app, when there is one: portable mode).
 | Heimdall (optional) | winget `BenjaminDobell.Heimdall`; only a fallback, used if the Download-mode interface has been switched to WinUSB |
 | Zadig (optional) | winget `akeo.ie.Zadig`; only for the Heimdall fallback |
 | Samsung USB driver | You download Samsung's installer; Setup runs it only if it is validly signed by Samsung Electronics |
-| TWRP for star2lte | Setup opens the official TWRP page; you choose the downloaded `twrp-3.7.0_9-0-star2lte.img` (checked for the model name, the boot-image header and the RECOVERY size). The installer re-skins it on your PC into a WinRE-look recovery and flashes that; a prebuilt WinRE-look image is also accepted as-is. If your build folder holds your own copy of Microsoft's `UpdateOS-GearAnimation.gif` (e.g. in `twrp\`), the recovery is built with those gears; otherwise it uses its own drawn gears |
+| TWRP for star2lte | Setup opens the official TWRP page; you choose the downloaded `twrp-3.7.0_9-0-star2lte.img` (checked for the model name, the boot-image header and the RECOVERY size). The installer re-skins it on your PC into a WinRE-look recovery and flashes that, with Segoe UI from your Windows. Or choose the release's prebuilt `star2lte-winre-recovery.img` (the same recovery with open fonts), which is used as-is. If your build folder holds your own copy of Microsoft's `UpdateOS-GearAnimation.gif` (e.g. in `twrp\`), the recovery is built with those gears; otherwise it uses its own drawn gears |
 | UEFI image | Latest project release (`firmware.json` and the UEFI image for each Windows build it lists), or your local build folder |
 | Phone drivers | Latest project release (`drivers.zip`), or your local build folder |
 | Download-mode USB driver for Heimdall (optional) | Not needed: the installer flashes TWRP through the Samsung USB driver. Only for the Heimdall fallback, via Zadig |
@@ -95,23 +101,27 @@ The raw Windows image and boot files are produced automatically by the **Build
 the Windows image** step (under the installer's work folder); you don't supply
 them.
 
-### Publishing a release payload
+### Publishing a release
 
-`tools\release\make-payload.ps1` assembles the release assets the installer
-downloads (`firmware.json` with its UEFI images, `drivers.zip`, `SHA256SUMS`)
-from your builds; every UEFI image is checked against the hash `firmware.json`
-records for it:
+`tools\release\make-release-extras.ps1` builds the installer zips (self-contained
+publish plus the bundled runtimes' license terms) and the prebuilt recovery (the
+official TWRP re-skinned with the open fonts in `tools/twrp-winre/fonts` and the
+built-in gears). `tools\release\make-payload.ps1` then assembles every asset:
+`firmware.json` with its UEFI images (each checked against the hash the catalog
+records), `drivers.zip`, those extras, and `SHA256SUMS`:
 
 ```powershell
+.\tools\release\make-release-extras.ps1 -Twrp <official twrp-3.7.0_9-0-star2lte.img> -Version 0.1.0 -OutDir out\extras
 .\tools\release\make-payload.ps1 -FirmwareCatalog <folder with firmware.json> `
-    -Drivers <Exynos9810Ufs package>, <Exynos9810Hsi2c package>, <S6SY761Touch package> -OutDir out\release
+    -Drivers <Exynos9810Ufs package>, <Exynos9810Hsi2c package>, <S6SY761Touch package> `
+    -Assets (Get-ChildItem out\extras).FullName -OutDir out\release
 gh release create v0.1.0 (Get-ChildItem out\release).FullName
 ```
 
-Never attach Windows media, a built Windows image, or a WinRE-look recovery to a
-release: the recovery carries Segoe UI from the builder's Windows (and optionally
-Microsoft's UpdateOS animation), which is why the installer builds it on each
-user's PC from the official TWRP.
+Never attach Windows media or a built Windows image, and never a recovery the
+installer built on a PC: that one carries Segoe UI from the builder's Windows (and
+maybe Microsoft's UpdateOS animation). `make-payload.ps1` refuses a recovery whose
+build stamp is not "open fonts, built-in gears".
 
 ### Build the installer
 
@@ -124,7 +134,9 @@ dotnet build S9Woa.Installer.sln -c Release -p:Platform=x64
 dotnet test tests\S9Woa.Installer.Core.Tests\S9Woa.Installer.Core.Tests.csproj -p:Platform=x64
 ```
 
-`-p:Platform=ARM64` builds the on-device (ARM64) flavour.
+`-p:Platform=ARM64` builds the ARM64 flavour. The app is unpackaged
+(`WindowsPackageType=None`) but keeps the MSIX tooling on, which is what puts its
+compiled XAML resources (`S9WoaInstaller.pri`) into a `dotnet publish`.
 
 ### Build the firmware
 

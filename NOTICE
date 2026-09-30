@@ -31,17 +31,24 @@ Microsoft Windows-driver-samples — SkeletonI2C
 
 TWRP (Team Win Recovery Project)
   The recovery used to stage and write the Windows image on the device. TWRP is
-  GPL-3.0 (https://github.com/TeamWin/android_bootable_recovery). The installer
-  does not rebuild or redistribute TWRP: the user downloads the official
-  twrp-3.7.0_9-0-star2lte.img from twrp.me, and the installer re-skins that image
-  in place on the user's PC into a Windows-Recovery-Environment look
-  (tools/twrp-winre and installer/.../Twrp/WinReTwrpBuilder.cs). The theme XML,
-  the reskin rules (tools/twrp-winre/theme/reskin.xml), the /sbin helper scripts
-  and all artwork are original work: every stock TWRP bitmap is replaced at build
-  time by an original drawing of the same name and size (tools/twrp-winre/assets),
-  so no TeamWin bitmap is committed or shipped in the built image. The two kernel
-  modules baked into the recovery (rwd1_ack, rwd1_evidence_reader) are our own
-  GPL-2.0 code, with sources under tools/twrp-winre/modules/.
+  GPL-3.0 (https://github.com/TeamWin/android_bootable_recovery) and the kernel
+  inside it is Samsung's GPL-2.0 Linux kernel. The installer re-skins the
+  official twrp-3.7.0_9-0-star2lte.img from twrp.me on the user's PC into a
+  Windows-Recovery-Environment look (tools/twrp-winre and
+  installer/.../Twrp/WinReTwrpBuilder.cs). The releases also carry one such build,
+  star2lte-winre-recovery.img, made from that official image with the open fonts
+  below and the built-in gears. Every change is in this repository: the theme XML,
+  the reskin rules (tools/twrp-winre/theme/reskin.xml), the /sbin helper scripts,
+  the four-byte kernel patch that routes power-off (PowerOffRoutePatch.cs) and all
+  artwork, which is original: every stock TWRP bitmap is replaced at build time by
+  an original drawing of the same name and size (tools/twrp-winre/assets), so no
+  TeamWin bitmap is committed or shipped in the built image. The four kernel
+  modules baked into the recovery (rwd1_ack, rwd1_evidence_reader, rwd1_clear_poc,
+  pram_smp_clear_poc) are our own GPL-2.0 code, with sources under
+  tools/twrp-winre/modules/. The unmodified parts come from TeamWin's sources
+  (https://github.com/TeamWin) and Samsung's SM-G965F kernel source
+  (https://opensource.samsung.com); we will provide the corresponding source of
+  the published recovery on request.
 
 7-Zip LZMA SDK — Igor Pavlov
   installer/src/S9Woa.Installer.Core/Twrp/Lzma/ vendors the managed LZMA SDK,
@@ -51,9 +58,17 @@ TWRP (Team Win Recovery Project)
   headers noted in that folder's README.
 
 Segoe UI (Microsoft)
-  The WinRE-look recovery uses Segoe UI, which is copied from the *builder's own*
-  %WINDIR%\Fonts at build time and written into that machine's recovery image. No
-  Segoe font file is committed to this repository or redistributed with it.
+  The WinRE-look recovery the installer builds uses Segoe UI, which is copied from
+  the *builder's own* %WINDIR%\Fonts at build time and written into that machine's
+  recovery image. No Segoe font file is committed to this repository or
+  redistributed with it; the recovery in the releases uses the open fonts below.
+
+Selawik (Microsoft) — SIL Open Font License 1.1
+  tools/twrp-winre/fonts/winre-*.ttf, the fonts of the published recovery, are
+  compiled from Microsoft's open-source Selawik (https://github.com/microsoft/Selawik)
+  by tools/twrp-winre/fonts/make_fonts.py. Copyright 2015 Microsoft Corporation, with
+  Reserved Font Name Selawik; as Modified Versions they are renamed "S9WoA Sans".
+  The license is tools/twrp-winre/fonts/OFL.txt and travels with the fonts.
 
 UpdateOS gear animation (Microsoft)
   Optionally, the recovery shows Microsoft's UpdateOS rotating gears. The GIF is
@@ -75,8 +90,10 @@ tiny11builder (https://github.com/ntdevlabs/tiny11builder)
 
 Microsoft
   Windows, the Windows App SDK and WinUI 3. Windows media is provided by the
-  user or downloaded from Microsoft; no Microsoft binaries are redistributed
-  here.
+  user or downloaded from Microsoft; no Windows files are redistributed here. The
+  installer packages in the releases are self-contained: they include the .NET
+  runtime (MIT) and the Windows App SDK runtime, redistributed under their own
+  license terms, which ship with them in licenses\.
 
 Trademarks (Samsung, Galaxy, Exynos, Windows, Microsoft, and others) belong to
 their respective owners and are used only to identify the hardware and software

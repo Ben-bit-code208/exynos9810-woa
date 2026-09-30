@@ -24,7 +24,7 @@ public sealed partial class HostPage : Page, IWizardStep
 
     private void Evaluate()
     {
-        WorkDirText.Text = AppServices.WorkDirectory;
+        WorkDirText.Text = AppServices.Redact(AppServices.WorkDirectory);
         var results = HostPreflight.Evaluate(new LocalHostEnvironment(AppServices.AdbPath), AppServices.WorkDirectory);
         Results.ItemsSource = results.Select(r => new CheckItem(r)).ToList();
         _ok = !results.HasBlockers();

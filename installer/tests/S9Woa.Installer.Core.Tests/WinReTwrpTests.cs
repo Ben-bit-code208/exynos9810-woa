@@ -510,5 +510,62 @@ public sealed class WinReTwrpTests
             Encoding.UTF8.GetString(gifCpio.Get("twres/splash.xml")!.Data), StringComparison.Ordinal);
         Assert.EndsWith($"gears={withGif.Gears}\n", Encoding.UTF8.GetString(gifCpio.Get("twres/winre-build.txt")!.Data), StringComparison.Ordinal);
         Assert.True(withGif.Bytes <= AndroidBootImage.RecoveryPartitionBytes);
+
+        // The redistributable build: the repository's open fonts (and their license) instead of
+        // Segoe UI, recorded in the stamp.
+        var openFonts = RepoFontsDirectory();
+        var open = new WinReTwrpBuilder().Build(baseBytes, fontsDirectory: openFonts);
+        var openCpio = CpioArchive.Parse(LzmaAlone.Decompress(AndroidBootImage.Parse(open.Image).Ramdisk));
+        foreach (var face in new[] { "winre-light.ttf", "winre-semilight.ttf", "winre-regular.ttf" })
+        {
+            Assert.Equal(File.ReadAllBytes(Path.Combine(openFonts, face)), openCpio.Get($"twres/fonts/{face}")!.Data);
+        }
+        Assert.Equal(File.ReadAllBytes(Path.Combine(openFonts, "OFL.txt")), openCpio.Get("twres/fonts/winre-OFL.txt")!.Data);
+        Assert.Equal(new WinReStamp(WinReTwrpBuilder.BuilderVersion, WinReTwrpBuilder.OfficialTwrpSha256, WinReTwrpBuilder.BuiltinGears, "open"),
+            WinReTwrpBuilder.ReadStamp(open.Image));
+    }
+
+    /// <summary>tools/twrp-winre/fonts, found by walking up from the test binaries to the repository.</summary>
+    private static string RepoFontsDirectory()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            var fonts = Path.Combine(dir.FullName, "tools", "twrp-winre", "fonts");
+            if (File.Exists(Path.Combine(fonts, "winre-regular.ttf")))
+            {
+                return fonts;
+            }
+        }
+        throw new DirectoryNotFoundException("tools/twrp-winre/fonts not found above the test binaries.");
+    }
+
+    [Fact]
+    public void FontsComeFromWindowsOrFromAFolderOfOpenFonts()
+    {
+        var root = Directory.CreateTempSubdirectory("s9woa-fonts-").FullName;
+        try
+        {
+            var windows = Directory.CreateDirectory(Path.Combine(root, "windows")).FullName;
+            foreach (var f in new[] { "segoeuil.ttf", "segoeuisl.ttf", "segoeui.ttf" })
+            {
+                File.WriteAllBytes(Path.Combine(windows, f), [1]);
+            }
+            var (segoe, segoeOpen) = WinReTwrpBuilder.ResolveFonts(windows);
+            Assert.False(segoeOpen);
+            Assert.Equal(Path.Combine(windows, "segoeuisl.ttf"), segoe.Single(f => f.Dest == "winre-semilight.ttf").Source);
+
+            var (open, isOpen) = WinReTwrpBuilder.ResolveFonts(RepoFontsDirectory());
+            Assert.True(isOpen);
+            Assert.Equal(["winre-light.ttf", "winre-semilight.ttf", "winre-regular.ttf"], open.Select(f => f.Dest));
+
+            // Neither complete set: the Segoe message, naming the first missing face.
+            File.Delete(Path.Combine(windows, "segoeuisl.ttf"));
+            var e = Assert.Throws<InvalidOperationException>(() => WinReTwrpBuilder.ResolveFonts(windows));
+            Assert.Contains("segoeuisl.ttf", e.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 }

@@ -20,6 +20,9 @@
 .PARAMETER FirmwareCatalog  Folder holding firmware.json and the UEFI images it lists.
 .PARAMETER Uefi             Path to a single packed UEFI boot image (legacy layout).
 .PARAMETER Drivers          One or more built driver package folders. Exynos9810Ufs is required.
+.PARAMETER Assets           Further files published as they are and listed in SHA256SUMS: the
+                            installer zips, and the WinRE-look recovery built with the open fonts
+                            (never one built with Segoe UI or a user's UpdateOS gears).
 .PARAMETER OutDir           Output folder (created; must be empty or absent).
 #>
 [CmdletBinding()]
@@ -27,6 +30,7 @@ param(
   [string]$FirmwareCatalog,
   [string]$Uefi,
   [Parameter(Mandatory)] [string[]]$Drivers,
+  [string[]]$Assets = @(),
   [Parameter(Mandatory)] [string]$OutDir
 )
 $ErrorActionPreference = "Stop"
@@ -63,6 +67,26 @@ if ($FirmwareCatalog) {
 }
 if ($Uefi) { $legacy = Assert-UefiImage $Uefi }
 
+$extra = foreach ($asset in $Assets) {
+  $item = Get-Item -LiteralPath $asset
+  if ($item.PSIsContainer) { throw "$asset is a folder; give files." }
+  if ($item.Extension -in ".wim", ".esd", ".iso", ".vhdx") { throw "$asset is Windows media or a Windows image; it is never published." }
+  if ($item.Name -like "*winre*.img") {
+    # A recovery for a release must be the open-font build: Segoe UI and the UpdateOS gears
+    # belong to the builder's Windows. The builder stamps which fonts and gears it used.
+    $bytes = [IO.File]::ReadAllBytes($item.FullName)
+    $core = Get-ChildItem (Join-Path $PSScriptRoot "..\..\installer\src\S9Woa.Installer.Core\bin") -Recurse -Filter S9Woa.Installer.Core.dll -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $core) { throw "Build the installer first: its S9Woa.Installer.Core.dll reads the recovery's build stamp." }
+    Add-Type -Path $core.FullName
+    $stamp = [S9Woa.Installer.Core.Twrp.WinReTwrpBuilder]::ReadStamp($bytes)
+    if (-not $stamp -or $stamp.Fonts -ne "open" -or $stamp.Gears -ne "builtin") {
+      throw "$asset is not an open-font build with the built-in gears (stamp: $stamp); it cannot be published."
+    }
+  }
+  $item
+}
+
 $packages = foreach ($dir in $Drivers) {
   $item = Get-Item -LiteralPath $dir
   if (-not $item.PSIsContainer) { throw "$dir is not a folder." }
@@ -94,6 +118,7 @@ try {
   if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 }
 $names += "drivers.zip"
+foreach ($f in $extra) { Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $out $f.Name); $names += $f.Name }
 
 $lines = foreach ($name in $names) {
   $hash = (Get-FileHash -LiteralPath (Join-Path $out $name) -Algorithm SHA256).Hash.ToLowerInvariant()

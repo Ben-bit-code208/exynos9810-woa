@@ -26,7 +26,8 @@ public sealed record WinReBuildResult(byte[] Image, string Sha256, string Builde
 }
 
 /// <summary>The <c>twres/winre-build.txt</c> stamp a build of this installer leaves in its ramdisk.</summary>
-public sealed record WinReStamp(string Builder, string BaseSha256, string Gears);
+/// <param name="Fonts"><c>windows</c> (Segoe UI from the builder's Windows) or <c>open</c> (redistributable fonts).</param>
+public sealed record WinReStamp(string Builder, string BaseSha256, string Gears, string Fonts = "windows");
 
 /// <summary>
 /// Builds the WinRE-look recovery on the end user's PC from the official TWRP
@@ -80,6 +81,28 @@ public sealed class WinReTwrpBuilder
     public static string DefaultFontsDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Fonts");
 
+    /// <summary>
+    /// The three recovery faces and where each comes from: Segoe UI (<c>segoeuil/segoeuisl/segoeui.ttf</c>)
+    /// when the folder has it - the user's own Windows - or else fonts already named
+    /// <c>winre-light/semilight/regular.ttf</c>, the redistributable open fonts a public build uses.
+    /// </summary>
+    internal static (IReadOnlyList<(string Dest, string Source)> Fonts, bool Open) ResolveFonts(string directory)
+    {
+        var slots = FontMap.Select(p => p.Split(':')).ToList();
+        if (slots.All(s => File.Exists(Path.Combine(directory, s[1]))))
+        {
+            return (slots.Select(s => (s[0], Path.Combine(directory, s[1]))).ToList(), false);
+        }
+        if (slots.All(s => File.Exists(Path.Combine(directory, s[0]))))
+        {
+            return (slots.Select(s => (s[0], Path.Combine(directory, s[0]))).ToList(), true);
+        }
+        var missing = slots.First(s => !File.Exists(Path.Combine(directory, s[1])))[1];
+        throw new InvalidOperationException(
+            $"The Windows font {missing} was not found in {directory}. It is copied from your own "
+            + "Windows to give the recovery the Segoe UI look; the installer cannot proceed without it.");
+    }
+
     /// <summary>Classify a candidate .img: official TWRP, an existing WinRE build, or unknown.</summary>
     public static BaseImageKind Classify(byte[] image)
     {
@@ -124,7 +147,8 @@ public sealed class WinReTwrpBuilder
                 .Where(p => p.Length == 2)
                 .ToDictionary(p => p[0].Trim(), p => p[1].Trim(), StringComparer.Ordinal);
             return fields.TryGetValue("builder", out var builder) && builder.Length > 0
-                ? new WinReStamp(builder, fields.GetValueOrDefault("base_sha256", ""), fields.GetValueOrDefault("gears", ""))
+                ? new WinReStamp(builder, fields.GetValueOrDefault("base_sha256", ""), fields.GetValueOrDefault("gears", ""),
+                    fields.GetValueOrDefault("fonts", "windows"))
                 : null;
         }
         catch (Exception e) when (e is InvalidDataException or InvalidOperationException)
@@ -283,19 +307,22 @@ public sealed class WinReTwrpBuilder
             cpio.PutFile($"{twres}/images/winrecog{(i + 1).ToString("000", CultureInfo.InvariantCulture)}.png", gearFrames[i]);
         }
 
-        // Fonts from the user's own Windows (full faces; the partition has slack).
-        foreach (var pair in FontMap)
+        // Fonts: Segoe UI from the user's own Windows, or a folder of open fonts already named for
+        // the recovery (winre-*.ttf, e.g. tools/twrp-winre/fonts) for a redistributable build.
+        var (fonts, openFonts) = ResolveFonts(fontsDirectory);
+        foreach (var (dest, src) in fonts)
         {
-            var parts = pair.Split(':');
-            var src = Path.Combine(fontsDirectory, parts[1]);
-            if (!File.Exists(src))
-            {
-                throw new InvalidOperationException(
-                    $"The Windows font {parts[1]} was not found in {fontsDirectory}. It is copied from your own "
-                    + "Windows to give the recovery the Segoe UI look; the installer cannot proceed without it.");
-            }
-            cpio.PutFile($"{twres}/fonts/{parts[0]}", File.ReadAllBytes(src));
+            cpio.PutFile($"{twres}/fonts/{dest}", File.ReadAllBytes(src));
         }
+        if (openFonts)
+        {
+            // OFL: every copy of the fonts carries their copyright notice and license.
+            foreach (var license in Directory.EnumerateFiles(fontsDirectory, "*.txt").OrderBy(f => f, StringComparer.Ordinal))
+            {
+                cpio.PutFile($"{twres}/fonts/winre-{Path.GetFileName(license)}", File.ReadAllBytes(license));
+            }
+        }
+        report?.Add(openFonts ? $"fonts: open fonts from {fontsDirectory}" : "fonts: Segoe UI from this PC's Windows");
 
         // /sbin scripts (LF line endings, mode 0755).
         foreach (var (name, data) in WinReResources.Folder("sbin"))
@@ -316,7 +343,7 @@ public sealed class WinReTwrpBuilder
         report?.Add("watchdog: ntfs-3g FUSE deadlock breaker installed as an init service");
 
         var gearsId = GearsId(gearsGif);
-        var marker = $"builder={BuilderVersion}\nbase_sha256={baseSha}\ngears={gearsId}\n";
+        var marker = $"builder={BuilderVersion}\nbase_sha256={baseSha}\ngears={gearsId}\n" + (openFonts ? "fonts=open\n" : "");
         Utf8Put(cpio, $"{twres}/winre-build.txt", marker);
 
         // Repack.

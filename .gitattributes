@@ -13,3 +13,4 @@
 *.efi binary
 *.fd binary
 *.ko binary
+*.ttf binary

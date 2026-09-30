@@ -29,6 +29,15 @@ redistributed; both come from the builder's own machine at build time:
 Both are licensed to the machine that owns them and are written into that
 machine's recovery image. Do not redistribute a built image or `ui.zip`.
 
+**The published recovery** (`star2lte-winre-recovery.img` in the releases) is
+built with neither: the installer's builder takes a folder of fonts already named
+`winre-light/semilight/regular.ttf` in place of Segoe UI, and `fonts/` holds such
+a set, compiled from Microsoft's open-source Selawik (SIL OFL 1.1, see
+`fonts/README.md`); the OFL text goes into the image with them. Without a GIF the
+gears are the built-in ones. The build stamp (`/twres/winre-build.txt`) records
+`fonts=open` and `gears=builtin`, and `tools/release/make-payload.ps1` refuses to
+publish a recovery without both. `tools/release/make-release-extras.ps1` makes it.
+
 Everything else is **original**:
 
 * the tile icons, the procedural gears and bars, and a replacement for **every

@@ -24,3 +24,5 @@ tools/twrp-winre/assets/images/*.png binary
 tools/twrp-winre/assets/stock/*.png binary
 # Our own GPL-2.0 kernel modules baked into the recovery; sources and COPYING sit beside them.
 tools/twrp-winre/modules/*.ko binary
+# Open fonts of the published recovery, compiled from Selawik (SIL OFL 1.1) by make_fonts.py beside them.
+tools/twrp-winre/fonts/*.ttf binary

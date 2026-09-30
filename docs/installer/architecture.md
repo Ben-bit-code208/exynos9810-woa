@@ -229,7 +229,11 @@ fonts and gear GIF → same bytes):
   bitmaps is replaced by original art (`assets/stock`), and the WinRE pages,
   `/sbin` scripts, icons, gears and the GPL kernel modules are embedded from
   `tools/twrp-winre`; the Segoe faces are copied from the builder's own
-  `%WINDIR%\Fonts` (never redistributed);
+  `%WINDIR%\Fonts` (never redistributed). Given a folder that holds
+  `winre-light/semilight/regular.ttf` instead (`WinReTwrpBuilder.ResolveFonts`), it
+  uses those plus their OFL text: `tools/twrp-winre/fonts` is such a set, compiled
+  from Selawik, and is what the recovery published in the releases is built with
+  (the build stamp then records `fonts=open`);
 - it bakes in four GPL kernel modules (`rwd1_ack`, `rwd1_evidence_reader`,
   `rwd1_clear_poc`, `pram_smp_clear_poc`) under `/sbin/s9woa`, so the recovery and
   its Troubleshoot actions can read and clear the retained startup records on the

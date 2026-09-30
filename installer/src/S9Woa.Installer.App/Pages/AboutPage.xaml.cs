@@ -8,6 +8,7 @@ public sealed partial class AboutPage : Page
     public AboutPage()
     {
         InitializeComponent();
-        VersionText.Text = $"Version {typeof(AboutPage).Assembly.GetName().Version} · logs in {AppServices.LogDirectory}";
+        var version = typeof(AboutPage).Assembly.GetName().Version;
+        VersionText.Text = AppServices.Redact($"Version {version?.ToString(3)} · logs in {AppServices.LogDirectory}");
     }
 }
