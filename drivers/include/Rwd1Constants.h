@@ -1,0 +1,106 @@
+#ifndef STAR2LTE_RWD1_CONSTANTS_H_
+#define STAR2LTE_RWD1_CONSTANTS_H_
+
+#define RWD1_PHYSICAL_BASE          0x00000000FED13D80ULL
+#define RWD1_RECORD_BYTES           0x40u
+#define RWD1_RECORD_DWORDS          16u
+#define RWD1_ENTRY_COOKIE_ADDR      0x00000000FED13DC0ULL
+#define RWD1_ENTRY_COOKIE_VALUE     0x594C4156u
+
+#define RWD1_MAGIC                  0x31445752u
+#define RWD1_VERSION_LENGTH         ((RWD1_RECORD_BYTES << 16) | 1u)
+#define RWD1_COMMIT_MAGIC           0x21445752u
+#define RWD1_CHECKSUM_SEED          0xA5A55A5Au
+
+#define RWD1_W_MAGIC                0u
+#define RWD1_W_VERSION_LENGTH       1u
+#define RWD1_W_GENERATION           2u
+#define RWD1_W_GENERATION_INV       3u
+#define RWD1_W_STATE                4u
+#define RWD1_W_OWNER                5u
+#define RWD1_W_PHASE                6u
+#define RWD1_W_REASON               7u
+#define RWD1_W_RESET_STATUS         8u
+#define RWD1_W_DETAIL               9u
+#define RWD1_W_HEARTBEAT            10u
+#define RWD1_W_HEARTBEAT_INV        11u
+#define RWD1_W_CHECKSUM             12u
+#define RWD1_W_CHECKSUM_INV         13u
+#define RWD1_W_COMMIT               14u
+#define RWD1_W_COMMIT_INV           15u
+
+#define RWD1_STATE_EMPTY                    0x00000000u
+#define RWD1_STATE_BOOTSHIM_ARMED           0x00000010u
+#define RWD1_STATE_SEC_ACTIVE               0x00000020u
+#define RWD1_STATE_DXE_ACTIVE               0x00000030u
+#define RWD1_STATE_BDS_ACTIVE               0x00000040u
+#define RWD1_STATE_EBS_ARMED                0x00000050u
+#define RWD1_STATE_WINDOWS_OWNED            0x00000060u
+#define RWD1_STATE_P3_POST_HANDOFF          0x00000070u
+#define RWD1_STATE_SHUTDOWN_PENDING         0x00000080u
+#define RWD1_STATE_CONTROLLED_STOP          0x00000090u
+#define RWD1_STATE_RECOVERY_PENDING         0x000000A0u
+#define RWD1_STATE_TWRP_ACK                 0x000000B0u
+#define RWD1_STATE_FATAL_NO_PET             0x000000E0u
+
+#define RWD1_OWNER_NONE                     0x00000000u
+#define RWD1_OWNER_BOOTSHIM                 0x00000001u
+#define RWD1_OWNER_SEC                      0x00000002u
+#define RWD1_OWNER_DXE                      0x00000003u
+#define RWD1_OWNER_BDS                      0x00000004u
+#define RWD1_OWNER_P3                       0x00000005u
+#define RWD1_OWNER_WINDOWS_UFS              0x00000006u
+#define RWD1_OWNER_TWRP                     0x00000007u
+#define RWD1_OWNER_WINDOWS_RAM_RETURN       0x00000008u
+
+#define RWD1_PHASE_NONE                     0x00000000u
+#define RWD1_PHASE_SHIM_ENTRY               0x00000001u
+#define RWD1_PHASE_SEC_ENTRY                0x00000002u
+#define RWD1_PHASE_DXE_ENTRY                0x00000003u
+#define RWD1_PHASE_BDS_ENTRY                0x00000004u
+#define RWD1_PHASE_START_IMAGE              0x00000005u
+#define RWD1_PHASE_EXIT_BOOT_SERVICES       0x00000006u
+#define RWD1_PHASE_P3_ACPI_COMMITTED        0x00000007u
+#define RWD1_PHASE_P3_PREBRANCH             0x00000008u
+#define RWD1_PHASE_WINDOWS_INITIALIZING     0x00000009u
+#define RWD1_PHASE_WINDOWS_RUNNING          0x0000000Au
+#define RWD1_PHASE_WINDOWS_BUGCHECK         0x0000000Bu
+#define RWD1_PHASE_WINDOWS_STORAGE_FATAL    0x0000000Cu
+#define RWD1_PHASE_WINDOWS_SHUTDOWN         0x0000000Du
+#define RWD1_PHASE_RECOVERY_ROUTE           0x0000000Eu
+#define RWD1_PHASE_TWRP_ALIVE               0x0000000Fu
+
+#define RWD1_REASON_NONE                    0x00000000u
+#define RWD1_REASON_WATCHDOG_RESET          0x00000001u
+#define RWD1_REASON_STALE_BOOT_OWNER        0x00000002u
+#define RWD1_REASON_P3_POST_HANDOFF_STALE   0x00000003u
+#define RWD1_REASON_WINDOWS_NO_PET          0x00000004u
+#define RWD1_REASON_WINDOWS_BUGCHECK        0x00000005u
+#define RWD1_REASON_WINDOWS_STORAGE_FATAL   0x00000006u
+#define RWD1_REASON_INVALID_RECORD          0x00000007u
+#define RWD1_REASON_RECOVERY_RETRY          0x00000008u
+#define RWD1_REASON_CONTROLLED_SHUTDOWN     0x00000009u
+#define RWD1_REASON_WINDOWS_REQUESTED_RECOVERY 0x0000000Au
+
+#define RWD1_PMU_BASE                       0x0000000014060000ULL
+#define RWD1_PMU_SWRESET_ADDR               (RWD1_PMU_BASE + 0x0400ULL)
+#define RWD1_PMU_RST_STAT_ADDR              (RWD1_PMU_BASE + 0x0404ULL)
+#define RWD1_PMU_WDT_DISABLE_ADDR           (RWD1_PMU_BASE + 0x0408ULL)
+#define RWD1_PMU_WDT_MASK_RESET_ADDR        (RWD1_PMU_BASE + 0x040CULL)
+#define RWD1_PMU_INFORM2_ADDR               (RWD1_PMU_BASE + 0x0808ULL)
+#define RWD1_PMU_INFORM3_ADDR               (RWD1_PMU_BASE + 0x080CULL)
+#define RWD1_PMU_SYSIP_DAT0_ADDR            (RWD1_PMU_BASE + 0x0810ULL)
+
+#define RWD1_RST_STAT_CLUSTER0_WDT          0x01000000u
+#define RWD1_RST_STAT_SWRESET               0x20000000u
+#define RWD1_PMU_WDT_CLUSTER0_BIT           0x01000000u
+#define RWD1_RECOVERY_INFORM2               0x00000000u
+#define RWD1_RECOVERY_INFORM3               0x12345674u
+#define RWD1_RECOVERY_SYSIP_DAT0            0x00000000u
+#define RWD1_SWRESET_VALUE                  0x00000001u
+
+#define RWD1_WDT_BASE                       0x0000000010050000ULL
+#define RWD1_WDT_COUNT                      0x0000FFF5u
+#define RWD1_WDT_CONTROL                    0x0000FF39u
+
+#endif

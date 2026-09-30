@@ -108,6 +108,12 @@
    "ref": "HEAD",
    "sha256": "cc23136623213172b58e8c604927822258aa1dac0117859dd4df235c5043bd19"
   },
+  "drivers/include/Rwd1Constants.h": {
+   "entry": "driver-ufs-include",
+   "published_sha256": "50e62281cade6de2d20d794ff92c56b4d2042cf437ddcbe26ebeba3eb602a621",
+   "ref": "WORKTREE",
+   "sha256": "50e62281cade6de2d20d794ff92c56b4d2042cf437ddcbe26ebeba3eb602a621"
+  },
   "firmware/Platform/Star2LtePkg/AcpiTables/AcpiTables.inf": {
    "entry": "firmware-platform",
    "published_sha256": "4a89b645f815829ef305d8deec5fc26cd67638e3d855ca13ccae0bdc2c12f027",

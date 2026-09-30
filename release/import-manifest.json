@@ -76,6 +76,13 @@
       "ref": "WORKTREE"
     },
     {
+      "id": "driver-ufs-include",
+      "from": "eight-core/harness/include/Rwd1Constants.h",
+      "to": "drivers/include/Rwd1Constants.h",
+      "license": "BSD-2-Clause-Patent",
+      "ref": "WORKTREE"
+    },
+    {
       "id": "driver-touch",
       "from": "windows-drivers/S6SY761Touch",
       "to": "drivers/S6SY761Touch",
