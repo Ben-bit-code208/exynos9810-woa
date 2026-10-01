@@ -75,7 +75,9 @@ $extra = foreach ($asset in $Assets) {
     # A recovery for a release must be the open-font build: Segoe UI and the UpdateOS gears
     # belong to the builder's Windows. The builder stamps which fonts and gears it used.
     $bytes = [IO.File]::ReadAllBytes($item.FullName)
+    $arch = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
     $core = Get-ChildItem (Join-Path $PSScriptRoot "..\..\installer\src\S9Woa.Installer.Core\bin") -Recurse -Filter S9Woa.Installer.Core.dll -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -notmatch '\\(x64|ARM64|x86)\\' -or $_.FullName -match "\\$arch\\" } |
       Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if (-not $core) { throw "Build the installer first: its S9Woa.Installer.Core.dll reads the recovery's build stamp." }
     Add-Type -Path $core.FullName
