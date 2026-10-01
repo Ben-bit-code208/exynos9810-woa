@@ -1,5 +1,13 @@
 # S6SY761Touch gesture-report candidate
 
+**Origin.** This driver is derived from TheMorc's (Richard Gráčik's)
+[S6SY761Touch](https://github.com/TheMorc/S6SY761Touch) Windows driver, GPL-2.0,
+adapted for the Galaxy S9+. His driver is built on Microsoft's vhidmini2 KMDF
+sample (MS-PL), began as a fork of Gustave Monce's
+[nt36xxx_win](https://github.com/edk2-porting/nt36xxx_win), and ports the Linux
+sec_ts / s6sy761 driver by Andi Shyti and Samsung Electronics. Their copyright
+notices are kept in the sources; see the repository's `NOTICE`.
+
 **Not deployed or hardware-qualified.** This is a bounded gesture-delivery
 update to the retained v24 `S6SY761Touch` driver, not the disabled public-GPIO
 migration or the unrelated `SecTouch` prototype. It retains the existing

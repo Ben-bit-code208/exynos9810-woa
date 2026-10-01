@@ -56,7 +56,7 @@
   },
   "drivers/S6SY761Touch/Device.c": {
    "entry": "driver-touch",
-   "published_sha256": "2c618bb061125dd52bcad2fdaf252197748dd08a46a81eddef29c5f406e58fb5",
+   "published_sha256": "e3d779c7a89ba66f1e1593fb7b0b66654bff47b8c4b90034289b492893ca6a77",
    "ref": "HEAD",
    "sha256": "2c618bb061125dd52bcad2fdaf252197748dd08a46a81eddef29c5f406e58fb5"
   },
@@ -68,7 +68,7 @@
   },
   "drivers/S6SY761Touch/README.md": {
    "entry": "driver-touch",
-   "published_sha256": "534469193c9fa4ef76b0b3d8cbb2af9aa86b9eab980808602bac25e37cc4b290",
+   "published_sha256": "607a12195e471df5b51e767fc747e9758d401b2cb61c03a637a890796d2c733c",
    "ref": "HEAD",
    "sha256": "8807b87cd9b505129bb694df4f718a8adf1107919460d24e7c021acc0fbd627e"
   },
@@ -332,7 +332,7 @@
   },
   "firmware/Platform/Star2LtePkg/Drivers/Star2LteRamManagerDxe/Star2LteRamManagerDxe.c": {
    "entry": "firmware-platform",
-   "published_sha256": "789eacee5b0e9160e34d67f2003e51926fc63a691435e6b4695500b5447cf25e",
+   "published_sha256": "5207a5dd0d55f9ff958ac10aa38fb9a89397b929af713567a80cd5e23f908771",
    "ref": "HEAD",
    "sha256": "789eacee5b0e9160e34d67f2003e51926fc63a691435e6b4695500b5447cf25e"
   },
@@ -500,7 +500,7 @@
   },
   "firmware/tools/bootshim/bootshim.S": {
    "entry": "firmware-bootshim",
-   "published_sha256": "ad02105ee3e28052f550e36a1e21b3bd82a21f45f6ba05a9b0619991da9459ed",
+   "published_sha256": "d62b796d60e986dca1bd88588b9f92e4c034ccc9f289df7e5640eaf9e4058d50",
    "ref": "HEAD",
    "sha256": "ad02105ee3e28052f550e36a1e21b3bd82a21f45f6ba05a9b0619991da9459ed"
   },

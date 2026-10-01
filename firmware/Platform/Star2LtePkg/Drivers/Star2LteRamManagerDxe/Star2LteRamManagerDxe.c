@@ -3,6 +3,10 @@
 
   The PEI window remains at 0x90000000..0xBC800000. DXE adds only ranges
   outside that window and excludes the fixed seclog and active framebuffer.
+
+  Follows the approach of Mu-Silicium's RamManagerDxe (Project Silicium,
+  https://github.com/Project-Silicium/Mu-Silicium, SiliciumPkg): mapping extra
+  DRAM from DXE with AddMemorySpace and the matching memory attributes.
 **/
 
 #include <Uefi.h>

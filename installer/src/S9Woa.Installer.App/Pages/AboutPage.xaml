@@ -11,13 +11,14 @@
                     <TextBlock Text="Galaxy S9+ Windows Installer" Style="{StaticResource BodyStrongTextBlockStyle}" />
                     <TextBlock x:Name="VersionText" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <TextBlock TextWrapping="Wrap" Text="Open-source UEFI firmware, Windows drivers and installer for the Samsung Galaxy S9+ (Exynos 9810). Not affiliated with or endorsed by Samsung or Microsoft." />
-                    <TextBlock TextWrapping="Wrap" Text="Licensed under BSD-2-Clause-Patent. The touch driver is GPL-2.0. See NOTICE for third-party components." />
+                    <TextBlock TextWrapping="Wrap" Text="Licensed under BSD-2-Clause-Patent. The touch driver is GPL-2.0. See NOTICE for third-party components and their licenses." />
                 </StackPanel>
             </Border>
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="Thanks" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <TextBlock TextWrapping="Wrap" Text="TianoCore EDK II, the Linux kernel and postmarketOS Exynos 9810 communities, TWRP, and tiny11builder for popularising offline image slimming." />
+                    <TextBlock Text="Credits" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock TextWrapping="Wrap" Text="Project Silicium (Mu-Silicium): the CNTFRQ_EL0 fix Windows needs to boot, and the RAM manager approach. Renegade Project (edk2-msm) and edk2-exynos: the boot shim. WOA-Project (Lumia950XLPkg, mu_andromeda_platforms): the firmware structure and kernel patching. TheMorc (Richard Gráčik): the S6SY761 touch driver." />
+                    <TextBlock TextWrapping="Wrap" Text="TianoCore EDK II, Microsoft's Windows-driver-samples, the Linux kernel and postmarketOS Exynos 9810 communities, TWRP, and tiny11builder for popularising offline image slimming." />
                 </StackPanel>
             </Border>
         </StackPanel>

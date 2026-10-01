@@ -7,7 +7,8 @@ Copyright (c) 2017  Samsung Electronics Co., Ltd.
 Copyright (c) 2017  Andi Shyti <andi@etezian.org>
 					Andi Shyti <andi.shyti@samsung.com>
 
-Copyright (c) 2022 - 2023  Morc - Richard Gr��ik
+Copyright (c) 2022 - 2023  Morc - Richard Gráčik (TheMorc)
+Based on TheMorc's S6SY761Touch: https://github.com/TheMorc/S6SY761Touch
 
 Module Name:
 

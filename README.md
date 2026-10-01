@@ -22,10 +22,10 @@ The whole installation, from a stock Galaxy S9+ to the Windows desktop.
 
 | Path | Component | License |
 |------|-----------|---------|
-| `firmware/` | EDK2-based UEFI for star2lte (Platform + Silicon packages, boot shim, build/pack scripts) | BSD-2-Clause-Patent |
+| `firmware/` | EDK2-based UEFI for star2lte (Platform + Silicon packages, boot shim, build/pack scripts), with code and designs from Mu-Silicium, edk2-msm / edk2-exynos and WOA-Project's Lumia950XLPkg / mu_andromeda_platforms (see [Credits](#credits)) | BSD-2-Clause-Patent; boot shim BSD-2-Clause (edk2-msm); CNTFRQ_EL0 patch MIT (Mu-Silicium) |
 | `drivers/Exynos9810Ufs/` | UFS storage driver (`drivers/include/` holds its shared record definitions) | BSD-2-Clause-Patent |
 | `drivers/Exynos9810Hsi2c/` | HSI2C bus controller (SpbCx) the touchscreen sits on | BSD-2-Clause-Patent AND MS-PL (framework from Microsoft's SkeletonI2C sample) |
-| `drivers/S6SY761Touch/` | Touchscreen driver (derived from the upstream Linux `sec_ts`/`s6sy761` driver) | GPL-2.0-only |
+| `drivers/S6SY761Touch/` | Touchscreen driver, derived from [TheMorc's S6SY761Touch](https://github.com/TheMorc/S6SY761Touch) (which ports the Linux `sec_ts`/`s6sy761` driver) | GPL-2.0-only |
 | `installer/` | WinUI 3 installer (`S9Woa.Installer.App`) over a reusable C# engine (`S9Woa.Installer.Core`) | BSD-2-Clause-Patent |
 | `tools/twrp-winre/` | The WinRE look the installer gives TWRP on your PC (theme, scripts, original artwork, GPL kernel modules; `fonts/` holds the open fonts of the published recovery) | BSD-2-Clause-Patent; modules GPL-2.0; fonts SIL OFL 1.1 |
 | `tools/release/` | Release importer, leak scanner and release payload script | BSD-2-Clause-Patent |
@@ -182,7 +182,32 @@ donation helps me dedicate more time to projects like this.
 
 ## Credits
 
-This work stands on a lot of other people's. See [NOTICE](NOTICE).
+This project reuses code and follows designs from other projects, and would not
+exist without them:
+
+- **[Project Silicium / Mu-Silicium](https://github.com/Project-Silicium/Mu-Silicium)**
+  (Robotix22, N1kroks, halal-beef and contributors): the CNTFRQ_EL0 shellcode
+  Windows needs to boot on this SoC, and the winload patch targets around it
+  (MIT); the DXE RAM-manager approach; and its Exynos 9810 Windows-boot work as
+  the reference for this firmware.
+- **[Renegade Project / edk2-msm](https://github.com/edk2-porting/edk2-msm)** and
+  **[edk2-exynos](https://github.com/sonic011gamer/edk2-exynos)**: the boot shim
+  every UEFI image starts with (BSD-2-Clause), and the firmware's load layout.
+- **[WOA-Project](https://github.com/WOA-Project)** (Ben (Bingxing) Wang /
+  imbushuo, Gustave Monce / gus33000, the DuoWoA authors):
+  [Lumia950XLPkg](https://github.com/WOA-Project/Lumia950XLPkg) and
+  [mu_andromeda_platforms](https://github.com/WOA-Project/mu_andromeda_platforms),
+  whose structure the firmware's DSC/FDF follow, and the kernel-patching
+  approach that started with Samuel Tulach's
+  [rainbow](https://github.com/SamuelTulach/rainbow).
+- **[TheMorc (Richard Gráčik)](https://github.com/TheMorc/S6SY761Touch)**: the
+  S6SY761 touchscreen driver ours is derived from, itself built on Microsoft's
+  vhidmini2 sample and Gustave Monce's nt36xxx_win, porting Andi Shyti's Linux
+  driver.
+- Microsoft's Windows-driver-samples (SkeletonI2C, vhidmini2), TianoCore EDK2,
+  the mainline Linux and postmarketOS Exynos 9810 communities, TWRP, and more.
+
+[NOTICE](NOTICE) has the full list, what came from where, and the license texts.
 
 ## License
 

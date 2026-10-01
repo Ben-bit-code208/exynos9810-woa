@@ -1,6 +1,12 @@
 /* @file
  * bootshim.S — relocating loader that prepends the EDK II firmware device (FD).
  *
+ * Adapted from tools/BootShim/BootShim.S of edk2-msm (Renegade Project,
+ * https://github.com/edk2-porting/edk2-msm), as carried by edk2-exynos
+ * (https://github.com/sonic011gamer/edk2-exynos): the fake Linux kernel header
+ * and the relocating copy below are theirs. Copyright (c) Renegade Project and
+ * the edk2-msm authors; BSD-2-Clause, full notice in this repository's NOTICE.
+ *
  * The Galaxy S9+ bootloader (sboot) loads an Android boot.img "kernel" and
  * jumps to its first byte. Our EDK II FD (STAR2LTE_UEFI.fd) is *linked to run*
  * at 0x90000000, but sboot drops the kernel near 0x80100000 (DRAM base +
