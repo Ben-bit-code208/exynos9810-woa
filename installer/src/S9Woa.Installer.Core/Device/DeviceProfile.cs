@@ -89,6 +89,17 @@ public sealed record DeviceProfile
     /// <summary>Official recovery file name, e.g. <c>twrp-3.7.0_9-0-star2lte.img</c>.</summary>
     public string? TwrpFileName { get; init; }
 
+    /// <summary>
+    /// Role name to partition-node suffix, for phones whose kernel exposes no
+    /// <c>/dev/block/by-name</c> links and therefore no names at all. A Fire HD 8 reports
+    /// <c>mmcblk0p11</c> and nothing says that this one is SYSTEM; this is where that fact lives,
+    /// and it was read off the phone's own <c>/proc/mounts</c> and the contents of each partition
+    /// rather than off a vendor file, because the vendor file describes a different tablet.
+    /// Empty for phones that have real partition names.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> PartitionRoles { get; init; } =
+        new Dictionary<string, string>();
+
     /// <summary>Size the BOOT partition must hold for the UEFI image to fit.</summary>
     public long BootPartitionBytes { get; init; }
 
@@ -350,11 +361,58 @@ public static class DeviceCatalog
             ],
             Notes = ["Kept as a named refusal so the installer can explain the chipset instead of only listing one supported model."],
         },
+        new()
+        {
+            Id = "ford",
+            Codename = "ford",
+            MarketingName = "Amazon Fire HD 8 (8th generation)",
+            SoC = "MediaTek MT8127",
+            HardwareToken = "mt8127",
+            Architecture = TargetArchitecture.Arm64,
+            Tier = SupportTier.Candidate,
+            Variants =
+            [
+                new("Fire", "ford", "all regions"),
+            ],
+            // No names exist on this device, so these are facts rather than defaults. Every entry was
+            // read off the tablet: SYSTEM, CACHE and USERDATA from its own /etc/fstab and
+            // /proc/mounts, BOOT and RECOVERY from the "ANDROID!" boot-image header at offset 0 of
+            // p5 and p6, TEE1/TEE2 from the "TEE" tag in p9 and p10.
+            PartitionRoles = new Dictionary<string, string>
+            {
+                ["BOOT"] = "p5",
+                ["RECOVERY"] = "p6",
+                ["SYSTEM"] = "p11",
+                ["CACHE"] = "p12",
+                ["USERDATA"] = "p13",
+            },
+            BootPartitionBytes = 16L * 1024 * 1024,
+            RecoveryPartitionBytes = 16L * 1024 * 1024,
+            Blockers =
+            [
+                "It is a MediaTek MT8127, not an Exynos 9810: the LK bootloader, the TrustZone firmware and the boot chain here are different parts, and none of them are in this repository.",
+                "Its storage is 512-byte sectors. The Windows image build lays out a 4Kn volume, so it would have to be rebuilt for this device before it could be written.",
+                "No UEFI build for this board exists here. Windows on ARM needs an EDK2 Platform package for the MT8127, and none has been written.",
+                "USERDATA is about 13 GiB, and Windows on ARM needs well over 32 GiB to install. The tablet cannot hold it as it is partitioned.",
+            ],
+            Notes =
+            [
+                "The roles above were confirmed on the tablet; the MTK scatter file shipped with the Fire tooling describes a different storage layout and must not be used to fill this in.",
+                "A MediaTek tablet of this class is unlocked through the boot ROM rather than through a fused flag: a BROM payload opens the LK bootloader, and fastboot follows. No copy of those payloads is intact on this machine.",
+            ],
+        },
     ];
 
     /// <summary>Every profile the catalog knows, installable ones first.</summary>
     public static IReadOnlyList<DeviceProfile> All { get; } =
         [GalaxyS9Plus, GalaxyS9, GalaxyNote9, .. Excluded];
+
+    /// <summary>
+    /// The Fire HD 8 profile, named because its partition roles were measured on a real tablet and
+    /// are worth referring to directly. It stays in <see cref="Excluded"/>: measured is not the same
+    /// as able to install.
+    /// </summary>
+    public static DeviceProfile Ford { get; } = Excluded.Single(p => p.Id == "ford");
 
     /// <summary>Profiles the installer will carry through an installation.</summary>
     public static IReadOnlyList<DeviceProfile> InstallableProfiles { get; } =

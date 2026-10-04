@@ -118,6 +118,56 @@ public class PartitionProbeTests
     }
 
     [Fact]
+    public void LetsTheProfileSayWhichNodeHoldsWhichRole()
+    {
+        var phone = DeviceCatalog.Ford;
+        var named = SysfsLayoutParser.Parse(FireHd8Output)!;
+        Assert.False(named.HasRoles);
+
+        var layout = named.ResolvedByRoles(phone);
+        Assert.True(layout.HasRoles);
+        Assert.Equal("mmcblk0p13", layout.Node("USERDATA")!.Node);
+        Assert.Equal("mmcblk0p11", layout.Node("SYSTEM")!.Node);
+        Assert.Equal("mmcblk0p12", layout.Node("CACHE")!.Node);
+        Assert.Equal(14_043_168_256, layout.SizeOf("USERDATA"));
+        Assert.Equal(1_258_291_200, layout.SizeOf("SYSTEM"));
+
+        // Roles the profile does not claim stay absent: it must not guess BOOT out of thin air.
+        Assert.False(layout.Has("MISC"));
+        Assert.Equal(5, layout.ByName.Count);
+    }
+
+    [Fact]
+    public void RefusesToWriteToATabletThatCannotHoldWindows()
+    {
+        var raw = SysfsLayoutParser.Parse(FireHd8Output)!;
+
+        // As measured, the tablet has no MISC partition at all, and that is what stops it first.
+        var missing = raw.ResolvedByRoles(DeviceCatalog.Ford);
+        Assert.Contains("no partition named MISC", missing.CheckAgainst(DeviceCatalog.Ford)!, StringComparison.OrdinalIgnoreCase);
+
+        // And even if MISC were among the five partitions not yet identified, the sector size
+        // refuses it on its own: this profile builds 4Kn boot volumes, this tablet has 512-byte ones.
+        var withMisc = DeviceCatalog.Ford with
+        {
+            PartitionRoles = new Dictionary<string, string>(DeviceCatalog.Ford.PartitionRoles) { ["MISC"] = "p8" },
+        };
+        var problem = raw.ResolvedByRoles(withMisc).CheckAgainst(withMisc)!;
+        Assert.Contains("512-byte sectors", problem, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void KeepsTheReferencePhoneOnRealPartitionNames()
+    {
+        // The Samsung path must not be disturbed by role mapping: it has by-name links, so the
+        // profile's roles are never consulted.
+        var samsung = SysfsLayoutParser.Parse(S9PlusOutput)!;
+        Assert.True(samsung.HasRoles);
+        Assert.Same(samsung, samsung.ResolvedByRoles(DeviceCatalog.GalaxyS9Plus));
+        Assert.Null(samsung.CheckAgainst(DeviceCatalog.GalaxyS9Plus));
+    }
+
+    [Fact]
     public void RefusesOutputThatIsNotALayout()
     {
         Assert.Null(SysfsLayoutParser.Parse(""));

@@ -48,6 +48,37 @@ public sealed record PartitionLayout(
     /// <summary>The partition on a device node such as <c>mmcblk0p13</c>, or null.</summary>
     public PartitionPlacement? Node(string node) => this[node];
 
+    /// <summary>
+    /// This layout re-keyed by partition role, for a phone that publishes no names. Each entry of
+    /// <see cref="DeviceProfile.PartitionRoles"/> says which node suffix holds which role; the result
+    /// is an ordinary named layout, so nothing downstream has to know that the names came from a
+    /// profile instead of from the kernel. Roles the profile does not claim are dropped rather than
+    /// guessed, which is why a profile has to be measured before it is trusted: claiming
+    /// <c>USERDATA = p13</c> for a tablet where p13 is CACHE would overwrite the wrong partition,
+    /// and there is no name on the device to catch it.
+    /// </summary>
+    public PartitionLayout ResolvedByRoles(DeviceProfile profile)
+    {
+        if (NamesAreSemantic)
+        {
+            return this;
+        }
+
+        var byRole = new Dictionary<string, PartitionPlacement>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (role, nodeSuffix) in profile.PartitionRoles)
+        {
+            // The prober reports full node names (mmcblk0p13) when there are no names to report, so
+            // accept the suffix either bare or already carrying the unit's prefix.
+            var found = ByName.TryGetValue(nodeSuffix, out var extent)
+                || ByName.TryGetValue($"{Unit}{nodeSuffix}", out extent);
+            if (found)
+            {
+                byRole[role] = extent! with { Name = role, Node = $"{Unit}{nodeSuffix}" };
+            }
+        }
+        return new PartitionLayout(Unit, LogicalSectorSize, DiskBytes, byRole, NamesAreSemantic: true);
+    }
+
     public bool Has(string name) => this[name] is not null;
 
     public long SizeOf(string name) => this[name]?.SizeBytes
