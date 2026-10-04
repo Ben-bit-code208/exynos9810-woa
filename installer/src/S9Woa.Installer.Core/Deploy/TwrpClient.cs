@@ -156,6 +156,25 @@ public sealed partial class TwrpClient
         ParsePartitionLinks(await ShellCheckedAsync($"ls -l {ByName}", Quick, ct).ConfigureAwait(false));
 
     /// <summary>
+    /// The phone's own partition layout, read with the same sysfs command the adb prober uses so
+    /// both transports report the same thing. Returns null when this recovery will not answer
+    /// (an older TWRP without sysfs, a shell that rejects the read), which the caller handles by
+    /// falling back to the profile's validated geometry.
+    /// </summary>
+    public async Task<PartitionLayout?> MeasureLayoutAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var r = await AdbAsync(["shell", SysfsLayoutParser.ProbeCommand], Quick, ct).ConfigureAwait(false);
+            return r.Succeeded ? SysfsLayoutParser.Parse(r.StdOut) : null;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Returns the device's own spelling of a by-name link (this phone uses upper case, e.g.
     /// <c>USERDATA</c>), matched case-insensitively. Throws if the partition does not exist.
     /// </summary>

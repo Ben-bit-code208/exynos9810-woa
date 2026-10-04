@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 using System.Buffers.Binary;
 using System.Security.Cryptography;
+using S9Woa.Installer.Core.Device;
 
 namespace S9Woa.Installer.Core.Twrp;
 
@@ -16,8 +17,12 @@ public sealed class AndroidBootImage
 {
     private static readonly byte[] Magic = "ANDROID!"u8.ToArray();
 
-    /// <summary>RECOVERY partition on star2lte; the repacked image must fit this.</summary>
-    public const long RecoveryPartitionBytes = 68_149_248;
+    /// <summary>
+    /// RECOVERY on the validated board; the repacked image must fit it. A port's real size comes
+    /// from its profile (<see cref="DeviceProfile.RecoveryPartitionBytes"/>), so this is only the
+    /// default the builder checks against.
+    /// </summary>
+    public static long RecoveryPartitionBytes => DeviceCatalog.GalaxyS9Plus.RecoveryPartitionBytes;
 
     private readonly byte[] _header;
 

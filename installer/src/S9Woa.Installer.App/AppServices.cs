@@ -102,8 +102,7 @@ internal static class AppServices
         Device = Adb is null ? null : new DeviceActions(Adb, Runner);
         HeimdallPath = Toolset.ResolvePath(Tools.Heimdall);
         ZadigPath = Toolset.ResolvePath(Tools.Zadig);
-        ITwrpFlasher native = new Core.Deploy.Odin.OdinTwrpFlasher(new LocalMachineRegistry());
-        TwrpFlasher = new TwrpFlashService(HeimdallPath is null ? [native] : [native, new HeimdallTwrpFlasher(HeimdallPath, Runner)]);
+        ApplyBoard();
     }
 
     public static TwrpClient? Twrp(string serial) => AdbPath is null ? null : new TwrpClient(AdbPath, serial, Runner);
@@ -134,11 +133,37 @@ internal static class AppServices
         {
             Privacy.AddSerial(value?.Serial);
             _currentDevice = value;
+            ApplyBoard();
             CurrentDeviceChanged?.Invoke();
         }
     }
 
     public static event Action? CurrentDeviceChanged;
+
+    /// <summary>
+    /// Points everything board-dependent - the toolset's recovery and size limits, the Download-mode
+    /// flasher - at the identified phone. Falls back to the validated board when none is identified,
+    /// because the toolset has to be preparable before a phone is connected.
+    /// </summary>
+    private static void ApplyBoard()
+    {
+        var board = Board ?? DeviceCatalog.GalaxyS9Plus;
+        Toolset.Profile = board;
+        ITwrpFlasher native = new Core.Deploy.Odin.OdinTwrpFlasher(new LocalMachineRegistry())
+        {
+            // BOOT is the phone's own size, so the flasher can tell whether it can also start TWRP.
+            Profile = board,
+        };
+        TwrpFlasher = new TwrpFlashService(HeimdallPath is null ? [native] : [native, new HeimdallTwrpFlasher(HeimdallPath, Runner)]);
+    }
+
+    /// <summary>
+    /// The connected phone's board profile, or null when no phone is identified. Null on purpose:
+    /// everything board-specific (recovery, UEFI, partition layout, support tier) follows from this,
+    /// and guessing the reference board for an unidentified phone is how the wrong firmware gets
+    /// written to it.
+    /// </summary>
+    public static DeviceProfile? Board => CurrentDevice?.Profile;
 
     public static bool RisksAccepted { get; set; }
 

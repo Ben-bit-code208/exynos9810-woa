@@ -63,6 +63,14 @@ public sealed record DeviceSnapshot(
     bool? WarrantyTripped)
 {
     /// <summary>
+    /// The catalog profile this phone belongs to, or null when it is not in the catalog. Everything
+    /// board-specific is read through this, so a phone that reaches a stage without one is refused
+    /// rather than treated as the reference board.
+    /// </summary>
+    public DeviceProfile? Profile =>
+        DeviceCatalog.ForModel(Model) ?? DeviceCatalog.ForCodename(Codename);
+
+    /// <summary>
     /// A phone in Download mode, which reports nothing over USB but its presence. It stands for
     /// the phone this installation identified before (its serial and bootloader were saved);
     /// null when nothing was identified yet, or the saved bootloader is not a supported model's.

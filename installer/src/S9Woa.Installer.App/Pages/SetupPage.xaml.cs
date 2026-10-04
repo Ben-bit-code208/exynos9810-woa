@@ -15,7 +15,7 @@ namespace S9Woa.Installer.App.Pages;
 /// </summary>
 public sealed partial class SetupPage : Page, IWizardStep
 {
-    private readonly List<ToolRow> _rows = Tools.All.Select(t => new ToolRow(t)).ToList();
+    private readonly List<ToolRow> _rows = [];
     private readonly Progress<string> _log = new(AppServices.Log);
     private bool _running;
     private bool _complete;
@@ -23,6 +23,8 @@ public sealed partial class SetupPage : Page, IWizardStep
     public SetupPage()
     {
         InitializeComponent();
+        // The tool list follows the phone's profile, so it is built once the services exist.
+        _rows.AddRange(Tools.For(AppServices.Toolset.Profile).Select(t => new ToolRow(t)));
         ToolList.ItemsSource = _rows;
         RepoBox.Text = AppServices.Toolset.Config.ReleaseRepo;
         WingetBar.IsOpen = !AppServices.Toolset.WingetAvailable;
@@ -57,8 +59,8 @@ public sealed partial class SetupPage : Page, IWizardStep
         }
         AppServices.ReloadTools();
 
-        var complete = ToolsetManager.IsComplete(statuses);
-        var pending = Tools.All.Where(t => t.Required && statuses[t.Id].State != ToolState.Ready).Select(t => t.Name).ToList();
+        var complete = AppServices.Toolset.IsComplete(statuses);
+        var pending = Tools.For(AppServices.Toolset.Profile).Where(t => t.Required && statuses[t.Id].State != ToolState.Ready).Select(t => t.Name).ToList();
         SummaryTitle.Text = complete ? "Everything is ready" : pending.Count == 1 ? "1 item still needed" : $"{pending.Count} items still needed";
         SummaryText.Text = complete
             ? "All tools and files are in place."
@@ -120,7 +122,7 @@ public sealed partial class SetupPage : Page, IWizardStep
     private async void OnAuto(object sender, RoutedEventArgs e) => await RunAsync(null, "Automatic setup", async () =>
     {
         var result = await AppServices.Toolset.AutoSetupAsync(_log);
-        var needsUser = Tools.All.Where(t => t.Required && result[t.Id].State != ToolState.Ready).Select(t => t.Name).ToList();
+        var needsUser = Tools.For(AppServices.Toolset.Profile).Where(t => t.Required && result[t.Id].State != ToolState.Ready).Select(t => t.Name).ToList();
         if (needsUser.Count == 0)
         {
             Report(InfoBarSeverity.Success, "Setup complete", "Everything is installed. Press Continue.");

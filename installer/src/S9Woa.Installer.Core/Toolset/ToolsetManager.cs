@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 using System.Security.Cryptography;
 using System.Text.Json;
+using S9Woa.Installer.Core.Device;
 using S9Woa.Installer.Core.Image;
 using S9Woa.Installer.Core.Processes;
 using S9Woa.Installer.Core.Twrp;
@@ -81,12 +82,20 @@ public sealed class ToolsetManager
     public ToolsetConfig Config { get; }
     public bool WingetAvailable => _winget.WingetPath is not null;
 
-    public string TwrpPayload => Path.Combine(Paths.PayloadDirectory, "twrp-star2lte.img");
+    /// <summary>
+    /// The phone this toolset is being prepared for, set once the phone is identified. Everything
+    /// board-specific follows from it: which recovery to look for, what the payloads are called and
+    /// how large BOOT and RECOVERY are. It defaults to the validated board so the toolset can be
+    /// prepared before a phone is connected.
+    /// </summary>
+    public DeviceProfile Profile { get; set; } = DeviceCatalog.GalaxyS9Plus;
+
+    public string TwrpPayload => Path.Combine(Paths.PayloadDirectory, $"twrp-{Profile.Codename}.img");
     public string UefiPayload => Path.Combine(Paths.PayloadDirectory, "uefi.img");
     public string DriversPayload => Path.Combine(Paths.PayloadDirectory, "drivers");
 
     /// <summary>The WinRE recovery the installer actually flashes, built from the chosen TWRP.</summary>
-    public string TwrpWinrePayload => Path.Combine(Paths.PayloadDirectory, "twrp-winre-star2lte.img");
+    public string TwrpWinrePayload => Path.Combine(Paths.PayloadDirectory, $"twrp-winre-{Profile.Codename}.img");
     private string TwrpWinreInfoPath => TwrpWinrePayload + ".json";
 
     /// <summary>
@@ -156,17 +165,17 @@ public sealed class ToolsetManager
     public void SaveConfig() => Config.Save(Paths.DataDirectory);
 
     public IReadOnlyDictionary<string, ToolStatus> DetectAll() =>
-        Tools.All.ToDictionary(t => t.Id, t => Detect(t.Id));
+        Tools.For(Profile).ToDictionary(t => t.Id, t => Detect(t.Id));
 
     /// <summary>Every required tool is ready; optional ones (the Heimdall fallback) never block.</summary>
-    public static bool IsComplete(IReadOnlyDictionary<string, ToolStatus> statuses) =>
-        Tools.All.All(t => !t.Required || (statuses.TryGetValue(t.Id, out var s) && s.State == ToolState.Ready));
+    public bool IsComplete(IReadOnlyDictionary<string, ToolStatus> statuses) =>
+        Tools.For(Profile).All(t => !t.Required || (statuses.TryGetValue(t.Id, out var s) && s.State == ToolState.Ready));
 
     public string? ResolvePath(string id) => Detect(id) is { State: ToolState.Ready, Path: { } p } ? p : null;
 
     public ToolStatus Detect(string id)
     {
-        var def = Tools.Get(id);
+        var def = Tools.Get(id, Profile);
         Config.Overrides.TryGetValue(id, out var overridePath);
         switch (id)
         {
@@ -185,14 +194,14 @@ public sealed class ToolsetManager
             case Tools.Twrp:
                 return DetectTwrp();
             case Tools.Uefi:
-                if (LoadCatalogOrNull() is { } catalog && catalog.Present(BootImage.BootPartitionBytes) is { Count: > 0 } present)
+                if (LoadCatalogOrNull() is { } catalog && catalog.Present(Profile.BootPartitionBytes) is { Count: > 0 } present)
                 {
                     return ToolStatus.Ready(UefiCatalogDirectory,
                         $"{present.Count} UEFI build(s), for Windows {string.Join(", ", present.Select(i => i.Windows))}");
                 }
                 return Payload(
-                    (UefiPayload, BootImage.BootPartitionBytes),
-                    (Path.Combine(Paths.BundledPayloadDirectory, "uefi.img"), BootImage.BootPartitionBytes))
+                    (UefiPayload, Profile.BootPartitionBytes),
+                    (Path.Combine(Paths.BundledPayloadDirectory, "uefi.img"), Profile.BootPartitionBytes))
                     ?? ToolStatus.Missing("Download it from the project release, or choose your build folder.");
             case Tools.Drivers:
                 foreach (var dir in new[] { DriversPayload, Path.Combine(Paths.BundledPayloadDirectory, "drivers") })
@@ -224,7 +233,7 @@ public sealed class ToolsetManager
     private ToolStatus DetectTwrp()
     {
         var info = WinReRecoveryInfo.Load(TwrpWinreInfoPath);
-        if (info is null || !File.Exists(TwrpWinrePayload) || BootImage.Validate(TwrpWinrePayload, BootImage.RecoveryPartitionBytes) is not null)
+        if (info is null || !File.Exists(TwrpWinrePayload) || BootImage.Validate(TwrpWinrePayload, Profile.RecoveryPartitionBytes) is not null)
         {
             return File.Exists(TwrpPayload)
                 ? ToolStatus.Missing("TWRP is selected but the WinRE recovery is not built yet. Press Set up automatically, or choose the TWRP image again.")
@@ -349,7 +358,9 @@ public sealed class ToolsetManager
         string? prebuilt = null;
         foreach (var file in Directory.EnumerateFiles(folder, "*.img", options)
                      .Where(f => !Path.GetFileName(f).Contains("uefi", StringComparison.OrdinalIgnoreCase))
-                     .Where(f => BootImage.ValidateTwrp(f) is null)
+                     // Magic and size only: a prebuilt WinRE recovery is named after nothing in
+                     // particular, so whether it is the official TWRP or a build is Classify's call.
+                     .Where(f => BootImage.Validate(f, Profile.RecoveryPartitionBytes) is null)
                      .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
             switch (_winre.Classify(file))
@@ -430,7 +441,7 @@ public sealed class ToolsetManager
 
     public async Task<ToolStatus> InstallWingetAsync(string id, IProgress<string>? log = null, CancellationToken ct = default)
     {
-        var def = Tools.Get(id);
+        var def = Tools.Get(id, Profile);
         if (def.WingetId is null)
         {
             throw new InvalidOperationException($"{def.Name} is not installed with winget.");
@@ -453,7 +464,7 @@ public sealed class ToolsetManager
         {
             return new ToolStatus(ToolState.Error, "The file does not exist.");
         }
-        var def = Tools.Get(id);
+        var def = Tools.Get(id, Profile);
         switch (id)
         {
             case Tools.Adb or Tools.Heimdall or Tools.Zadig:
@@ -470,7 +481,7 @@ public sealed class ToolsetManager
 
             case Tools.Twrp:
             {
-                var problem = BootImage.ValidateTwrp(file);
+                var problem = BootImage.ValidateTwrp(file, Profile);
                 if (problem is not null)
                 {
                     return new ToolStatus(ToolState.Error, problem);
@@ -484,7 +495,7 @@ public sealed class ToolsetManager
             }
 
             case Tools.Uefi:
-                return CopyPayload(file, UefiPayload, BootImage.ValidateUefi(file), id);
+                return CopyPayload(file, UefiPayload, BootImage.ValidateUefi(file, Profile), id);
 
             default:
                 return new ToolStatus(ToolState.Error, $"{def.Name} cannot be provided as a single file.");
@@ -544,7 +555,7 @@ public sealed class ToolsetManager
         var catalogFile = Directory.EnumerateFiles(folder, FirmwareCatalog.FileName, options).FirstOrDefault();
         var uefi = Directory.EnumerateFiles(folder, "*.img", options)
             .Where(f => Path.GetFileName(f).Contains("uefi", StringComparison.OrdinalIgnoreCase))
-            .Where(f => BootImage.ValidateUefi(f) is null)
+            .Where(f => BootImage.ValidateUefi(f, Profile) is null)
             .OrderByDescending(File.GetLastWriteTimeUtc)
             .FirstOrDefault();
         if (catalogFile is not null)
@@ -682,7 +693,7 @@ public sealed class ToolsetManager
             {
                 var temp = UefiPayload + ".new";
                 await _releases.DownloadVerifiedAsync(release, "uefi.img", temp, log, ct).ConfigureAwait(false);
-                var problem = BootImage.ValidateUefi(temp);
+                var problem = BootImage.ValidateUefi(temp, Profile);
                 if (problem is not null)
                 {
                     File.Delete(temp);
@@ -742,7 +753,7 @@ public sealed class ToolsetManager
                 {
                     return new ToolStatus(ToolState.Error, $"Release {release.Tag}: {image.File} does not match the SHA-256 in {FirmwareCatalog.FileName}.");
                 }
-                if (BootImage.ValidateUefi(catalog.PathOf(image)) is { } problem)
+                if (BootImage.ValidateUefi(catalog.PathOf(image), Profile) is { } problem)
                 {
                     return new ToolStatus(ToolState.Error, $"Release {release.Tag}: {image.File}: {problem}");
                 }
@@ -795,10 +806,10 @@ public sealed class ToolsetManager
             var twrp = await Task.Run(() => BuildWinReRecovery(log), ct).ConfigureAwait(false);
             if (twrp.State != ToolState.Ready)
             {
-                log?.Report($"{Tools.Get(Tools.Twrp).Name}: {twrp.Detail}");
+                log?.Report($"{Tools.Get(Tools.Twrp, Profile).Name}: {twrp.Detail}");
             }
         }
-        foreach (var def in Tools.All)
+        foreach (var def in Tools.For(Profile))
         {
             ct.ThrowIfCancellationRequested();
             if (Detect(def.Id).State is ToolState.Ready or ToolState.Deferred)

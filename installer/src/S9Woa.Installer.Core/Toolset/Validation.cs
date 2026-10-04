@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 using System.Text;
+using S9Woa.Installer.Core.Device;
 
 namespace S9Woa.Installer.Core.Toolset;
 
 /// <summary>Checks that a file is an Android boot image that fits a phone partition.</summary>
 public static class BootImage
 {
-    public const long RecoveryPartitionBytes = 16638L * 4096; // RECOVERY on star2lte (65 MiB).
-    public const long BootPartitionBytes = 14080L * 4096;     // BOOT on star2lte (55 MiB).
-
     private static readonly byte[] Magic = "ANDROID!"u8.ToArray();
 
     /// <summary>Returns null when valid, otherwise a user-facing reason.</summary>
@@ -38,19 +36,29 @@ public static class BootImage
         return null;
     }
 
-    /// <summary>TWRP must be the star2lte (Galaxy S9+ Exynos) build; official files end in -star2lte.img.</summary>
-    public static string? ValidateTwrp(string file)
+    /// <summary>
+    /// TWRP must be the build for the phone's own board, because the recovery carries that board's
+    /// kernel and device tree; official file names end in <c>-&lt;codename&gt;.img</c>. The limits
+    /// and the expected name come from the profile, so a port needs no change here.
+    /// </summary>
+    public static string? ValidateTwrp(string file, DeviceProfile profile)
     {
         var name = Path.GetFileName(file);
-        if (!name.Contains("star2lte", StringComparison.OrdinalIgnoreCase))
+        var suffix = profile.TwrpFileSuffix;
+        if (!name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
         {
-            return "This does not look like TWRP for the Galaxy S9+ (Exynos). Official file names end in -star2lte.img "
-                + "(not starlte, which is the S9, or star2qlte, which is the Snapdragon model).";
+            var others = DeviceCatalog.All
+                .Where(p => p.Codename != profile.Codename)
+                .Select(p => $"{p.Codename} ({p.MarketingName})")
+                .ToList();
+            return $"This does not look like TWRP for {profile.MarketingName}. Official file names end in "
+                + $"{suffix}. The catalog's other boards are: {string.Join("; ", others)}.";
         }
-        return Validate(file, RecoveryPartitionBytes);
+        return Validate(file, profile.RecoveryPartitionBytes);
     }
 
-    public static string? ValidateUefi(string file) => Validate(file, BootPartitionBytes);
+    /// <summary>The UEFI image has to fit the phone's BOOT partition.</summary>
+    public static string? ValidateUefi(string file, DeviceProfile profile) => Validate(file, profile.BootPartitionBytes);
 
     internal static string Describe(string file) =>
         new StringBuilder(Path.GetFileName(file)).Append(" (").Append(new FileInfo(file).Length / 1024).Append(" KiB)").ToString();

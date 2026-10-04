@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
 using System.IO.Ports;
+using S9Woa.Installer.Core.Device;
 using S9Woa.Installer.Core.Toolset;
 
 namespace S9Woa.Installer.Core.Deploy.Odin;
@@ -114,6 +115,12 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
         _open = open ?? (port => new SerialOdinTransport(port));
     }
 
+    /// <summary>
+    /// The phone being flashed, for the partition sizes it reports in its own partition table.
+    /// Defaults to the validated board; set it once the phone is identified.
+    /// </summary>
+    public DeviceProfile Profile { get; set; } = DeviceCatalog.GalaxyS9Plus;
+
     public string Name => "the built-in Download-mode flasher";
 
     public string? FindPort() => DownloadModePort.Find(_registry, _presentPorts());
@@ -161,7 +168,7 @@ public sealed class OdinTwrpFlasher : ITwrpFlasher
         var length = image.Length;
         var bootLength = boot is null ? 0 : UsedLength(image);
         image.Position = 0;
-        if (boot is not null && bootLength > BootImage.BootPartitionBytes)
+        if (boot is not null && bootLength > Profile.BootPartitionBytes)
         {
             log?.Report($"This TWRP image ({bootLength / 1024} KiB) is larger than BOOT, so the phone can't start it by itself.");
             boot = null;

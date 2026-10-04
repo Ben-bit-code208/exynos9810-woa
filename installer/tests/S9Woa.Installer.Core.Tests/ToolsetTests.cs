@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using S9Woa.Installer.Core.Device;
 using S9Woa.Installer.Core.Image;
 using S9Woa.Installer.Core.Processes;
 using S9Woa.Installer.Core.Toolset;
@@ -142,18 +143,57 @@ public sealed class ToolsetTests : IDisposable
     [Fact]
     public void BootImageValidation()
     {
+        var s9Plus = DeviceCatalog.GalaxyS9Plus;
         var good = Touch(Path.Combine(_root, "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes());
-        Assert.Null(BootImage.ValidateTwrp(good));
-        Assert.Null(BootImage.ValidateUefi(good));
+        Assert.Null(BootImage.ValidateTwrp(good, s9Plus));
+        Assert.Null(BootImage.ValidateUefi(good, s9Plus));
 
+        // The Snapdragon board and the S9 board are both refused for an S9+: the recovery carries
+        // the kernel and device tree of its own board.
         var wrongModel = Touch(Path.Combine(_root, "twrp-3.7.0_9-0-star2qlte.img"), BootImageBytes());
-        Assert.NotNull(BootImage.ValidateTwrp(wrongModel));
+        Assert.Contains("star2lte", BootImage.ValidateTwrp(wrongModel, s9Plus)!, StringComparison.Ordinal);
         var s9 = Touch(Path.Combine(_root, "twrp-3.7.0_9-0-starlte.img"), BootImageBytes());
-        Assert.NotNull(BootImage.ValidateTwrp(s9));
+        Assert.Contains("starlte", BootImage.ValidateTwrp(s9, s9Plus)!, StringComparison.Ordinal);
+        Assert.Null(BootImage.ValidateTwrp(s9, DeviceCatalog.GalaxyS9)); // ...and is right for the S9
 
         var notBoot = Touch(Path.Combine(_root, "x-star2lte.img"), new byte[8192]);
-        Assert.Contains("ANDROID!", BootImage.ValidateTwrp(notBoot));
+        Assert.Contains("ANDROID!", BootImage.ValidateTwrp(notBoot, s9Plus));
         Assert.NotNull(BootImage.Validate(good, 4096 + 1));
+
+        // The size limits are the phone's, not this project's.
+        Assert.Equal(s9Plus.BootPartitionBytes, DeviceCatalog.GalaxyS9.BootPartitionBytes);
+    }
+
+    [Fact]
+    public async Task TheToolsetFollowsThePhonesBoard()
+    {
+        var m = Manager();
+        Assert.Equal(DeviceCatalog.GalaxyS9Plus, m.Profile);       // the default before a phone is known
+        Assert.Contains("star2lte", m.TwrpPayload, StringComparison.Ordinal);
+
+        // Point the toolset at the S9 and its recovery file becomes the one it accepts.
+        m.Profile = DeviceCatalog.GalaxyS9;
+        Assert.Contains("starlte", m.TwrpPayload, StringComparison.Ordinal);
+        Assert.Contains("starlte", m.TwrpWinrePayload, StringComparison.Ordinal);
+        Assert.Contains("starlte", Tools.For(m.Profile).First(t => t.Id == Tools.Twrp).Name,
+            StringComparison.Ordinal);
+
+        var s9Recovery = Touch(Path.Combine(_root, "twrp-3.7.0_9-0-starlte.img"), BootImageBytes());
+        Assert.Equal(ToolState.Ready, (await m.UseFileAsync(Tools.Twrp, s9Recovery)).State);
+
+        // The S9+'s recovery is not a valid choice for the S9, and vice versa.
+        var s9PlusRecovery = Touch(Path.Combine(_root, "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes());
+        Assert.NotEqual(ToolState.Ready, (await m.UseFileAsync(Tools.Twrp, s9PlusRecovery)).State);
+
+        // A wrong pick names the boards it is not, so the user can see which file was meant.
+        var refused = (await m.UseFileAsync(Tools.Twrp, s9PlusRecovery)).Detail;
+        Assert.Contains("Samsung Galaxy S9+ (Exynos 9810)", refused, StringComparison.Ordinal);
+        Assert.Contains("star2qlte", refused, StringComparison.Ordinal);
+
+        // ...and the S9+ gets told about the S9, whose file name is one character shorter.
+        m.Profile = DeviceCatalog.GalaxyS9Plus;
+        Assert.Contains("Samsung Galaxy S9 (Exynos 9810)",
+            (await m.UseFileAsync(Tools.Twrp, s9Recovery)).Detail, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -241,7 +281,7 @@ public sealed class ToolsetTests : IDisposable
         Assert.Equal(ToolState.Ready, status.State);
         Assert.Contains("22621.2428, 22621.7582", status.Detail, StringComparison.Ordinal);
         var catalog = m.LoadFirmwareCatalog()!;
-        Assert.Equal(2, catalog.Present(BootImage.BootPartitionBytes).Count);
+        Assert.Equal(2, catalog.Present(m.Profile.BootPartitionBytes).Count);
         Assert.Equal("22621.2428", catalog.Choose("22631.2428")!.Image.Windows);
         Assert.False(File.Exists(m.UefiPayload)); // no legacy single image when the release has a catalog
 
@@ -249,8 +289,8 @@ public sealed class ToolsetTests : IDisposable
         // catalog already installed stays as it was.
         var tampered = Manager(http: Release(Assets(Catalog(Uefi(3)))));
         Assert.Equal(ToolState.Error, (await tampered.DownloadReleaseAsync(Tools.Uefi)).State);
-        Assert.Equal(2, m.LoadFirmwareCatalog()!.Present(BootImage.BootPartitionBytes).Count);
-        Assert.Equal(2, tampered.LoadFirmwareCatalog()!.Present(BootImage.BootPartitionBytes).Count);
+        Assert.Equal(2, m.LoadFirmwareCatalog()!.Present(m.Profile.BootPartitionBytes).Count);
+        Assert.Equal(2, tampered.LoadFirmwareCatalog()!.Present(m.Profile.BootPartitionBytes).Count);
         Assert.False(Directory.Exists(tampered.UefiCatalogDirectory + ".download"));
     }
 
@@ -291,7 +331,7 @@ public sealed class ToolsetTests : IDisposable
     public async Task ChosenFilesAreValidatedAndRemembered()
     {
         var m = Manager();
-        Assert.False(ToolsetManager.IsComplete(m.DetectAll()));
+        Assert.False(m.IsComplete(m.DetectAll()));
 
         var twrp = Touch(Path.Combine(_root, "dl", "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes());
         Assert.Equal(ToolState.Ready, (await m.UseFileAsync(Tools.Twrp, twrp)).State);
@@ -560,9 +600,9 @@ public sealed class ToolsetTests : IDisposable
         }
         Assert.Equal(ToolState.Missing, result[Tools.Twrp].State);   // needs the user's download
         Assert.Equal(ToolState.Deferred, result[Tools.DownloadModeDriver].State);
-        Assert.False(ToolsetManager.IsComplete(result));
+        Assert.False(m.IsComplete(result));
 
         await m.UseFileAsync(Tools.Twrp, Touch(Path.Combine(_root, "twrp-3.7.0_9-0-star2lte.img"), BootImageBytes()));
-        Assert.True(ToolsetManager.IsComplete(m.DetectAll()));
+        Assert.True(m.IsComplete(m.DetectAll()));
     }
 }

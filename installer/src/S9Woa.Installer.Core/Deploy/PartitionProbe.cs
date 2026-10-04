@@ -54,9 +54,16 @@ public sealed class PartitionProbe
     /// asked, the profile's validated geometry otherwise. A measured layout that does not hold the
     /// partitions this install needs is refused here rather than after the phone has been touched.
     /// </summary>
-    public async Task<LayoutSource> ResolveAsync(DeviceProfile profile, CancellationToken ct = default)
+    public async Task<LayoutSource> ResolveAsync(DeviceProfile profile, CancellationToken ct = default) =>
+        Resolve(profile, await MeasureAsync(ct).ConfigureAwait(false));
+
+    /// <summary>
+    /// The same decision without a transport: what the phone answered, or null when it would not.
+    /// adb and TWRP both feed their output through this, so both refuse the same phones.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">the layout cannot be used for this profile.</exception>
+    public static LayoutSource Resolve(DeviceProfile profile, PartitionLayout? measured)
     {
-        var measured = await MeasureAsync(ct).ConfigureAwait(false);
         if (measured is null)
         {
             if (profile.Geometry is null)

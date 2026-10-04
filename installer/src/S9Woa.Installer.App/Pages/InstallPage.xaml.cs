@@ -272,7 +272,7 @@ public sealed partial class InstallPage : Page, IWizardStep
                 return await RunImageAsync(log, ct);
 
             case "partition":
-                return await RunPartitionAsync(ct);
+                return await RunPartitionAsync(log, ct);
 
             case "transfer":
                 return await RunTransferAsync(log, ct);
@@ -579,7 +579,14 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             File.Delete(vhdx);
         }
-        var built = await new VhdxImageBuilder(AppServices.Runner).BuildAsync(vhdx,
+        // The image is built for one phone's geometry. With the phone reachable over adb, that is
+        // what it reports; otherwise the profile's validated layout, which the partition step
+        // re-checks against the phone before anything is written.
+        var geometry = AppServices.Board is { } phone
+            ? await MeasureOfflineGeometryAsync(phone, log, ct) ?? PartitionProbe.OfflineGeometry(phone)
+            : PartitionProbe.OfflineGeometry(DeviceCatalog.GalaxyS9Plus);
+        var builder = new VhdxImageBuilder(AppServices.Runner) { Geometry = geometry };
+        var built = await builder.BuildAsync(vhdx,
             AppServices.InstallImagePath!, AppServices.EditionIndex, drivers, AppServices.Profile,
             AppServices.Unattend, outDir, log, ct);
         AppServices.Built = built;
@@ -620,7 +627,38 @@ public sealed partial class InstallPage : Page, IWizardStep
         return twrp;
     }
 
-    private static async Task<(bool, string)> RunPartitionAsync(CancellationToken ct)
+    /// <summary>
+    /// The phone's own geometry when it can be asked over adb, or null when it cannot (still in
+    /// Download mode, or not connected), in which case the caller uses the profile's layout.
+    /// </summary>
+    private static async Task<ReferenceGeometry?> MeasureOfflineGeometryAsync(DeviceProfile profile,
+        IProgress<string> log, CancellationToken ct)
+    {
+        if (AppServices.CurrentDevice?.Serial is not { } serial)
+        {
+            return null;
+        }
+        if (AppServices.AdbPath is not { } adb)
+        {
+            return null;
+        }
+        var probe = new PartitionProbe(adb, serial, AppServices.Runner);
+        try
+        {
+            var source = await probe.ResolveAsync(profile, ct);
+            log.Report(source.Detail);
+            return source.Geometry;
+        }
+        catch (InvalidOperationException e)
+        {
+            // Not fatal here: the profile's layout is used and the partition step refuses anything
+            // that does not match before the first write.
+            log.Report($"warning: {e.Message}");
+            return null;
+        }
+    }
+
+    private static async Task<(bool, string)> RunPartitionAsync(IProgress<string> log, CancellationToken ct)
     {
         await RefreshDeviceAsync(ct);
         var twrp = RequireTwrp(out _, out var err);
@@ -628,6 +666,24 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             return (false, err);
         }
+        if (AppServices.Board is not { } profile)
+        {
+            return (false, "The phone's board is not identified. Go back to the phone page and let the "
+                + "installer identify it before writing anything.");
+        }
+        // What the phone says about itself, not what this project assumed: the image is built for
+        // this geometry and the same numbers are checked again here before the first write.
+        LayoutSource layout;
+        try
+        {
+            layout = PartitionProbe.Resolve(profile, await twrp.MeasureLayoutAsync(ct));
+        }
+        catch (InvalidOperationException e)
+        {
+            return (false, e.Message);
+        }
+        log.Report(layout.Detail);
+
         var parts = await twrp.ListPartitionsAsync(ct);
         var required = new[]
         {
@@ -639,16 +695,25 @@ public sealed partial class InstallPage : Page, IWizardStep
         {
             return (false, $"The phone did not expose the expected partition(s): {string.Join(", ", missing)}.");
         }
-        foreach (var (name, expected) in new[] { (PartitionMap.WindowsTarget, PartitionMap.WindowsBytes), (PartitionMap.EfiSystemPartition, PartitionMap.CacheBytes) })
+        foreach (var (name, expected) in new[]
+                 {
+                     (PartitionMap.WindowsTarget, layout.Geometry.WindowsBytes),
+                     (PartitionMap.EfiSystemPartition, layout.Geometry.CacheBytes),
+                 })
         {
             var actual = parts.Keys.First(k => k.Equals(name, StringComparison.OrdinalIgnoreCase));
             var size = await twrp.PartitionSizeAsync(actual, ct);
             if (size != expected)
             {
-                return (false, $"{actual} is {size:N0} bytes, not the validated {expected:N0}. This phone's layout differs; stopping before any write.");
+                return (false, $"{actual} is {size:N0} bytes, but the image was built for {expected:N0}. "
+                    + "The phone's layout changed since the image was built; build the image again. Stopping before any write.");
             }
         }
-        return (true, $"Partitions verified: USERDATA ({PartitionMap.WindowsBytes >> 20} MiB) and the CACHE boot partition match the validated layout.");
+        return (true, layout.Measured
+            ? $"Partitions verified against the phone's own layout: USERDATA ({layout.Geometry.WindowsBytes >> 20} MiB) "
+              + "and the CACHE boot partition match the image."
+            : $"Partitions verified against the validated {profile.MarketingName} layout: USERDATA "
+              + $"({layout.Geometry.WindowsBytes >> 20} MiB) and the CACHE boot partition match.");
     }
 
     private static async Task<(bool, string)> RunTransferAsync(IProgress<string> log, CancellationToken ct)

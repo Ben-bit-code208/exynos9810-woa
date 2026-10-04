@@ -2,6 +2,7 @@
 using System.Buffers.Binary;
 using System.Text;
 using S9Woa.Installer.Core.Deploy.Odin;
+using S9Woa.Installer.Core.Device;
 using S9Woa.Installer.Core.Toolset;
 
 namespace S9Woa.Installer.Core.Tests;
@@ -273,7 +274,7 @@ public class OdinTests
         // A prebuilt WinRE recovery is the whole 65 MiB RECOVERY partition, 43 MiB of it image and
         // the rest zeros; BOOT is 55 MiB. RECOVERY gets every byte, BOOT only the used part.
         var phone = new FakePhone(3, PhonePit);
-        var length = (int)BootImage.RecoveryPartitionBytes;
+        var length = (int)DeviceCatalog.GalaxyS9Plus.RecoveryPartitionBytes;
         const int data = 43_284_306;   // the real prebuilt's last non-zero byte + 1
         const int used = 43_286_528;   // rounded up to a 4 KiB block
         var bytes = new byte[length];

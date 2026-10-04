@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
+using S9Woa.Installer.Core.Device;
+
 namespace S9Woa.Installer.Core.Toolset;
 
 public enum ToolKind
@@ -65,10 +67,10 @@ public static class Tools
     public const string Uefi = "uefi";
     public const string Drivers = "drivers";
 
-    public const string TwrpPage = "https://twrp.me/samsung/samsunggalaxys9plus.html";
     public const string SamsungDriverPage = "https://developer.samsung.com/android-usb-driver";
 
-    public static IReadOnlyList<ToolDefinition> All { get; } =
+    /// <summary>The tools for a phone: everything except the recovery is the same on every board.</summary>
+    public static IReadOnlyList<ToolDefinition> For(DeviceProfile profile) =>
     [
         new(Adb, "Android platform tools (adb)",
             "Talks to the phone in Android and in TWRP: identify, back up, and write Windows.",
@@ -85,10 +87,12 @@ public static class Tools
         new(DownloadModeDriver, "Download-mode USB driver for Heimdall",
             "Only for the Heimdall fallback: a one-time Zadig step while the phone is in Download mode.",
             ToolKind.Driver, false, ToolSource.Launch),
-        new(Twrp, "TWRP recovery for star2lte",
-            "The recovery the installer boots to back up the phone and write Windows. Choose the official "
-            + "twrp-3.7.0_9-0-star2lte.img; the installer turns it into a Windows Recovery-style recovery on this PC.",
-            ToolKind.Payload, true, ToolSource.OpenPage | ToolSource.PickFile, PageUrl: TwrpPage, FilePattern: "*.img"),
+        new(Twrp, $"TWRP recovery for {profile.Codename}",
+            $"The recovery the installer boots to back up the phone and write Windows. Choose the official "
+            + $"{profile.TwrpFileName ?? profile.TwrpFileSuffix}; the installer turns it into a Windows "
+            + "Recovery-style recovery on this PC.",
+            ToolKind.Payload, true, ToolSource.OpenPage | ToolSource.PickFile,
+            PageUrl: profile.TwrpPage, FilePattern: "*.img"),
         new(Uefi, "UEFI firmware image",
             "The open-source UEFI that boots Windows, written to the BOOT partition.",
             ToolKind.Payload, true, ToolSource.Release | ToolSource.BuildFolder | ToolSource.PickFile, FilePattern: "*.img"),
@@ -97,5 +101,6 @@ public static class Tools
             ToolKind.Payload, true, ToolSource.Release | ToolSource.BuildFolder),
     ];
 
-    public static ToolDefinition Get(string id) => All.First(t => t.Id == id);
+    public static ToolDefinition Get(string id, DeviceProfile? profile = null) =>
+        For(profile ?? DeviceCatalog.GalaxyS9Plus).First(t => t.Id == id);
 }
