@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: BSD-2-Clause-Patent
+using S9Woa.Installer.Core.Device;
+
 namespace S9Woa.Installer.Core.Deploy;
 
 /// <summary>
-/// The validated Galaxy S9+ (star2lte) partition layout the installer relies on.
-/// Names are the stable <c>/dev/block/by-name</c> links (upper case on this phone;
-/// lookups are case-insensitive), independent of the sd* node numbering.
+/// The partition names the installer relies on. They are the stable
+/// <c>/dev/block/by-name</c> links (upper case on these phones; lookups are case-insensitive), which
+/// Samsung keeps across models of one family, unlike the sd* node numbering and unlike every
+/// partition's size and offset - those are read off the phone (see <see cref="PartitionLayout"/>)
+/// because USERDATA grows and moves with the storage option.
 /// </summary>
 public static class PartitionMap
 {
@@ -31,9 +35,9 @@ public static class PartitionMap
     public const string RecoveryTarget = "RECOVERY";
 
     /// <summary>
-    /// The EFI system partition the UEFI boots from: Android's CACHE (sda21, 600 MiB). It is
-    /// reformatted as FAT32 with 4096-byte sectors (the UFS block size) and holds
-    /// \EFI\Microsoft\Boot\bootmgfw.efi and the BCD, whose boot-manager device points here.
+    /// The EFI system partition the UEFI boots from: Android's CACHE (sda21, 600 MiB on the
+    /// reference phone). It is reformatted as FAT32 with 4096-byte sectors (the UFS block size) and
+    /// holds \EFI\Microsoft\Boot\bootmgfw.efi and the BCD, whose boot-manager device points here.
     /// </summary>
     public const string EfiSystemPartition = "CACHE";
 
@@ -52,20 +56,27 @@ public static class PartitionMap
     public const string Misc = "MISC";
 
     /// <summary>
-    /// Samsung derives GPT identifiers from names ("ANDROID MMC DISK", "ANDROID USERDATA", ...),
-    /// so they are the same on every star2lte. The BCD addresses Windows by them.
+    /// Every partition a phone must have before the installer writes anything, and which of them
+    /// must be exactly the right size. Sizes are compared against the phone's own layout, not against
+    /// a fixed table.
     /// </summary>
-    public const string DiskGuid = "{52444e41-494f-2044-4d4d-43204449534b}";
-    public const string UserdataGuid = "{52444e41-494f-2044-5553-455244415441}";
-    public const string CacheGuid = "{52444e41-494f-2044-4341-434845000000}";
-    public const string SystemGuid = "{52444e41-494f-2044-5359-5354454d0000}";
+    public static IReadOnlyList<string> RequiredPartitions { get; } =
+        [UefiTarget, WindowsTarget, EfiSystemPartition, RecoveryTarget, Misc];
 
     /// <summary>
-    /// Byte geometry of the phone's main UFS unit and of USERDATA on it. The Windows image is
-    /// built on a virtual disk with exactly this layout so the NTFS volume matches USERDATA.
+    /// Samsung derives GPT identifiers from partition names ("ANDROID MMC DISK", "ANDROID USERDATA",
+    /// ...), so the BCD addresses Windows by the same values on every Exynos 9810 board. They follow
+    /// the names, not the model, and are read back from the phone before they are trusted.
     /// </summary>
-    public const long DiskBytes = 63_963_136_000;
-    public const long WindowsOffset = 6_951_534_592;
-    public const long WindowsBytes = 57_004_785_664;
-    public const long CacheBytes = 629_145_600;
+    public static string DiskGuid { get; } = "{52444e41-494f-2044-4d4d-43204449534b}";
+    public static string UserdataGuid { get; } = "{52444e41-494f-2044-5553-455244415441}";
+    public static string CacheGuid { get; } = "{52444e41-494f-2044-4341-434845000000}";
+    public static string SystemGuid { get; } = "{52444e41-494f-2044-5359-5354454d0000}";
+
+    /// <summary>
+    /// The validated Galaxy S9+ (SM-G965F, 128 GB) byte geometry. Kept as the fallback for phones
+    /// that cannot be probed (and the expectation the measured layout is checked against), but the
+    /// image is built from the phone's own layout whenever that can be read.
+    /// </summary>
+    public static ReferenceGeometry ReferenceLayout => ReferenceGeometry.GalaxyS9Plus128Gb;
 }

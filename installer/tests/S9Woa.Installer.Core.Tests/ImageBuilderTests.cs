@@ -134,7 +134,7 @@ public class ImageBuilderTests
         Assert.Contains("-FileSystem NTFS -AllocationUnitSize 4096", script, StringComparison.Ordinal);
         Assert.Contains("-NewDriveLetter S", script, StringComparison.Ordinal);
         Assert.Contains("-NewDriveLetter W", script, StringComparison.Ordinal);
-        var attach = VhdxImageBuilder.AttachReadOnlyScript(@"C:\img\s9.vhdx");
+        var attach = VhdxImageBuilder.AttachReadOnlyScript(@"C:\img\s9.vhdx", builder.Geometry);
         Assert.Contains("-ReadOnly -NoDriveLetter", attach, StringComparison.Ordinal);
         Assert.Contains("6951534592", attach, StringComparison.Ordinal);
         Assert.Contains("Dismount-VHD", VhdxImageBuilder.DetachScript(@"C:\img\s9.vhdx"), StringComparison.Ordinal);

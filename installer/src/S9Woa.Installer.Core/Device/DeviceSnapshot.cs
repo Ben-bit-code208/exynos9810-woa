@@ -67,16 +67,20 @@ public sealed record DeviceSnapshot(
     /// the phone this installation identified before (its serial and bootloader were saved);
     /// null when nothing was identified yet, or the saved bootloader is not a supported model's.
     /// </summary>
-    public static DeviceSnapshot? InDownloadMode(string? knownSerial, string? knownBootloader, IReadOnlyList<SupportedTarget>? targets = null)
+    public static DeviceSnapshot? InDownloadMode(string? knownSerial, string? knownBootloader, IReadOnlyList<DeviceProfile>? profiles = null)
     {
         if (knownSerial is null)
         {
             return null;
         }
-        var target = (targets ?? SupportedTarget.All).FirstOrDefault(t => SamsungBuild.TryParse(knownBootloader, t.ModelCode) is not null);
-        return target is null
+        var profile = DeviceCatalog.InstallableForBootloader(knownBootloader, profiles);
+        // A download-mode string carries only the bootloader version, which pins the exact variant -
+        // so report that variant's model code. Without one the phone is not identified; guessing a
+        // profile's model list would put the wrong model code on the Windows install.
+        var model = DeviceCatalog.VariantForBootloader(knownBootloader, profiles)?.Model;
+        return profile is null || model is null
             ? null
-            : new DeviceSnapshot(knownSerial, DeviceMode.Download, target.Model, target.Codename, target.HardwareToken,
+            : new DeviceSnapshot(knownSerial, DeviceMode.Download, model, profile.Codename, profile.HardwareToken,
                 knownBootloader, null, null, null, null, null, null);
     }
 
