@@ -29,13 +29,24 @@ public sealed record PartitionLayout(
     string Unit,
     int LogicalSectorSize,
     long DiskBytes,
-    IReadOnlyDictionary<string, PartitionPlacement> ByName)
+    IReadOnlyDictionary<string, PartitionPlacement> ByName,
+    bool NamesAreSemantic = true)
 {
+    /// <summary>
+    /// False when the device has no <c>/dev/block/by-name</c> links, so the keys in
+    /// <see cref="ByName"/> are node names (<c>mmcblk0p13</c>) and a lookup by role such as
+    /// USERDATA means nothing. The profile says which node holds what instead.
+    /// </summary>
+    public bool HasRoles => NamesAreSemantic;
+
     /// <summary>The by-name link the phone uses for a partition name, or null.</summary>
     public PartitionPlacement? this[string name] =>
         ByName.TryGetValue(name, out var extent)
             ? extent
             : ByName.Where(p => p.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(p => p.Value).FirstOrDefault();
+
+    /// <summary>The partition on a device node such as <c>mmcblk0p13</c>, or null.</summary>
+    public PartitionPlacement? Node(string node) => this[node];
 
     public bool Has(string name) => this[name] is not null;
 
@@ -115,21 +126,37 @@ public static class SysfsLayoutParser
     /// <summary>
     /// The command the prober runs. sysfs reports every partition's start and size in 512-byte
     /// sectors regardless of the unit's real block size, and <c>/dev/block/by-name</c> says which
-    /// name belongs to which node. Both are world-readable, so this works in stock Android with no
-    /// root and in TWRP alike - which is what lets the Windows image be built before the phone is
-    /// unlocked or has any recovery on it.
+    /// name belongs to which node where that exists. Both are world-readable, so this works in
+    /// stock Android with no root and in TWRP alike - which is what lets the Windows image be built
+    /// before the phone is unlocked or has any recovery on it.
     /// </summary>
+    /// <remarks>
+    /// The storage unit is found by looking at <c>/sys/block</c> rather than by assuming
+    /// <c>sda</c>: the Fire tablet measures as <c>mmcblk0</c>, and a glob for one vendor's name
+    /// returns nothing on every other one. Where a device has no <c>by-name</c> links the node names
+    /// are reported instead and <c>names=node</c> says so, because then a name means a position on
+    /// the disk rather than a role: which node is USERDATA is the profile's business, not the
+    /// reader's.
+    /// </remarks>
     public const string ProbeCommand =
-        "u=$(for p in /sys/block/sd?; do [ -f \"$p/queue/logical_block_size\" ] && echo \"$p\" && break; done); "
-        + "[ -n \"$u\" ] || exit 1; "
+        // The biggest non-virtual block device with a real block size: the phone's storage.
+        "u=; best=0; for d in /sys/block/*; do case ${d##*/} in loop*|ram*|zram*|dm-*) continue ;; esac; "
+        + "[ -f \"$d/queue/logical_block_size\" ] && [ -f \"$d/size\" ] || continue; "
+        + "s=$(cat \"$d/size\" 2>/dev/null) || continue; case $s in ''|*[!0-9]*) continue ;; esac; "
+        + "if [ \"$s\" -gt \"$best\" ]; then best=$s; u=$d; fi; done; [ -n \"$u\" ] || exit 1; "
         + "echo \"unit=${u#/sys/block/}\"; "
         + "echo \"lbs=$(cat \"$u/queue/logical_block_size\")\"; "
         + "echo \"size=$(cat \"$u/size\")\"; "
-        + "for l in /dev/block/by-name/*; do "
-        + "n=${l##*/}; d=$(readlink -f \"$l\") || continue; "
-        + "b=${d##*/}; [ -e \"$u/$b/start\" ] || continue; "
-        + "echo \"p $n $b $(cat \"$u/$b/start\") $(cat \"$u/$b/size\")\"; "
-        + "done";
+        // Named partitions where the device has them.
+        + "src=node; for dir in /dev/block/by-name /dev/block/bootdevice/by-name; do [ -d \"$dir\" ] || continue; "
+        + "src=by-name; for l in \"$dir\"/*; do [ -e \"$l\" ] || continue; n=${l##*/}; "
+        + "d=$(readlink -f \"$l\") || continue; b=${d##*/}; [ -f \"$u/$b/start\" ] || continue; "
+        + "echo \"p $n $b $(cat \"$u/$b/start\") $(cat \"$u/$b/size\")\"; done; break; done; "
+        + "echo \"names=$src\"; "
+        // Otherwise the node names, so the layout still carries every partition's place and size.
+        + "if [ \"$src\" = node ]; then for p in \"$u\"/*/; do b=${p%/}; b=${b##*/}; "
+        + "[ -f \"$u/$b/start\" ] || continue; "
+        + "echo \"p $b $b $(cat \"$u/$b/start\") $(cat \"$u/$b/size\")\"; done; fi";
 
     /// <summary>sysfs always counts in 512-byte sectors, whatever the unit's logical block size is.</summary>
     private const long SysfsSectorBytes = 512;
@@ -143,6 +170,7 @@ public static class SysfsLayoutParser
     {
         string? unit = null;
         long? logical = null, sectors = null;
+        var semanticNames = true;
         var parts = new List<(int Number, string Name, string Node, long Start, long Size)>();
 
         foreach (var raw in output.Split('\n'))
@@ -163,6 +191,10 @@ public static class SysfsLayoutParser
             else if (line.StartsWith("size=", StringComparison.Ordinal))
             {
                 sectors = ParseLong(line[5..]);
+            }
+            else if (line.StartsWith("names=", StringComparison.Ordinal))
+            {
+                semanticNames = line[6..].Trim() == "by-name";
             }
             else if (line.StartsWith("p ", StringComparison.Ordinal))
             {
@@ -199,32 +231,31 @@ public static class SysfsLayoutParser
             byName[name] = new PartitionPlacement(name, node, number,
                 start * SysfsSectorBytes, size * SysfsSectorBytes, sectorBytes);
         }
-        return new PartitionLayout(unit, (int)sectorBytes, total * SysfsSectorBytes, byName);
+        return new PartitionLayout(unit, (int)sectorBytes, total * SysfsSectorBytes, byName, semanticNames);
     }
 
     private static long? ParseLong(string text) =>
         long.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : null;
 
-    /// <summary>The partition number in an <c>sdXN</c> node name, or null when it is not one.</summary>
+    /// <summary>
+    /// The partition number in a device node name, or null when it has none. The trailing digits are
+    /// the partition number on every layout this reads: <c>sda20</c>, <c>mmcblk0p13</c>,
+    /// <c>nvme0n1p2</c>. Requiring a vendor's prefix would drop the whole layout on every other
+    /// vendor, which is what happened to a Fire HD 8 before this was fixed.
+    /// </summary>
     private static int? NodeNumber(string node)
     {
-        if (node.Length < 4 || !node.StartsWith("sd", StringComparison.OrdinalIgnoreCase))
+        var end = node.Length;
+        while (end > 0 && char.IsAsciiDigit(node[end - 1]))
         {
-            return null;
+            end--;
         }
-        var i = 2;
-        while (i < node.Length && char.IsAsciiLetterLower(node[i]))
+        if (end == node.Length || end == 0)
         {
-            i++;
+            return null; // no trailing digits, or nothing but digits (the whole-disk node itself)
         }
-        var digits = node.AsSpan(i);
-        for (var k = 0; k < digits.Length; k++)
-        {
-            if (!char.IsAsciiDigit(digits[k]))
-            {
-                return null;
-            }
-        }
-        return int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) ? number : null;
+        return int.TryParse(node.AsSpan(end), NumberStyles.Integer, CultureInfo.InvariantCulture, out var number)
+            ? number
+            : null;
     }
 }

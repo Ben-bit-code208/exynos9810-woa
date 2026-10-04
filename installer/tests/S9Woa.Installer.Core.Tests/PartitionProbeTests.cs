@@ -66,6 +66,57 @@ public class PartitionProbeTests
         Assert.Contains("9 partitions", layout.Summary(), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Captured from a real Amazon Fire HD 8 (product:lineage_ford, ro.boot.hardware=mt8127), the
+    /// first non-Samsung phone the prober was run against. It found the two things the Samsung-only
+    /// version of the command got wrong: the storage unit is <c>mmcblk0</c>, not <c>sda</c>, and this
+    /// device has no <c>/dev/block/by-name</c> links at all.
+    /// </summary>
+    private const string FireHd8Output =
+        "unit=mmcblk0\n" +
+        "lbs=512\n" +
+        "size=30535680\n" +
+        "names=node\n" +
+        "p mmcblk0p1 mmcblk0p1 2048 2048\n" +
+        "p mmcblk0p10 mmcblk0p10 127744 10240\n" +
+        "p mmcblk0p11 mmcblk0p11 137984 2457600\n" +
+        "p mmcblk0p12 mmcblk0p12 2595584 512000\n" +
+        "p mmcblk0p13 mmcblk0p13 3107584 27428063\n" +
+        "p mmcblk0p2 mmcblk0p2 4096 2048\n" +
+        "p mmcblk0p3 mmcblk0p3 6144 35584\n" +
+        "p mmcblk0p4 mmcblk0p4 41728 2048\n" +
+        "p mmcblk0p5 mmcblk0p5 43776 32768\n" +
+        "p mmcblk0p6 mmcblk0p6 76544 32768\n" +
+        "p mmcblk0p7 mmcblk0p7 109312 1024\n" +
+        "p mmcblk0p8 mmcblk0p8 110336 7168\n" +
+        "p mmcblk0p9 mmcblk0p9 117504 10240\n";
+
+    [Fact]
+    public void MeasuresAPhoneWithoutSamsungNames()
+    {
+        var layout = SysfsLayoutParser.Parse(FireHd8Output)!;
+        Assert.Equal("mmcblk0", layout.Unit);
+        Assert.Equal(512, layout.LogicalSectorSize);
+        Assert.Equal(15_634_268_160, layout.DiskBytes);
+        Assert.Equal(13, layout.ByName.Count);
+
+        // No by-name links here, so a role lookup must not silently succeed.
+        Assert.False(layout.HasRoles);
+        Assert.False(layout.Has("USERDATA"));
+        Assert.Throws<KeyNotFoundException>(() => layout.SizeOf("USERDATA"));
+
+        // The partitions are still there to build an image for, by node.
+        var userdata = layout.Node("mmcblk0p13")!;
+        Assert.Equal(1_591_083_008, userdata.OffsetBytes);
+        Assert.Equal(14_043_168_256, userdata.SizeBytes);
+        Assert.Equal(1_200 * 1024 * 1024, layout.Node("mmcblk0p11")!.SizeBytes);
+
+        // And it is refused on its own terms: this project builds 4Kn images, this is a 512-byte
+        // eMMC, and it says so rather than writing something unbootable.
+        var problem = layout.CheckAgainst(DeviceCatalog.GalaxyS9Plus)!;
+        Assert.Contains("no partition named", problem, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void RefusesOutputThatIsNotALayout()
     {
@@ -122,7 +173,7 @@ public class PartitionProbeTests
 
         Assert.Single(runner.Calls);
         Assert.Contains("adb.exe -s aa11bb22cc33dd44 shell", runner.Calls[0], StringComparison.Ordinal);
-        Assert.Contains("/sys/block/sd?", runner.Calls[0], StringComparison.Ordinal);
+        Assert.Contains("/sys/block/*", runner.Calls[0], StringComparison.Ordinal);
         Assert.Contains("/dev/block/by-name", runner.Calls[0], StringComparison.Ordinal);
 
         var source = await probe.ResolveAsync(DeviceCatalog.GalaxyS9Plus);
@@ -157,8 +208,9 @@ public class PartitionProbeTests
         // No root, and nothing caller-controlled is embedded in the command.
         Assert.DoesNotContain("su ", args[3], StringComparison.Ordinal);
         Assert.DoesNotContain("aa11bb22", args[3], StringComparison.Ordinal);
-        Assert.Contains("/sys/block/sd?", args[3], StringComparison.Ordinal);
+        Assert.Contains("/sys/block/*", args[3], StringComparison.Ordinal);
         Assert.Contains("/dev/block/by-name", args[3], StringComparison.Ordinal);
+        Assert.DoesNotContain("/sys/block/sd?", args[3], StringComparison.Ordinal); // Samsung-only glob
     }
 
     [Fact]
