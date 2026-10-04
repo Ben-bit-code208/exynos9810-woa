@@ -374,17 +374,23 @@ public static class DeviceCatalog
             [
                 new("omni_ford", "ford", "all regions"),
             ],
-            // No names exist on this device, so these are facts rather than defaults. Every entry was
-            // read off the tablet: SYSTEM, CACHE and USERDATA from its own /etc/fstab and
-            // /proc/mounts, BOOT and RECOVERY from the "ANDROID!" boot-image header at offset 0 of
-            // p5 and p6, TEE1/TEE2 from the "TEE" tag in p9 and p10.
+            // The kernel exposes no /dev/block/by-name links on this tablet, so the roles are read
+            // out of the disk's own GPT, which does carry names in UTF-16. Every entry below is that
+            // node's GPT name, and all thirteen GPT entries agree with what sysfs reports for start
+            // and size, so this table is the tablet's own and not an assumption.
+            //
+            // The rest of the table, none of which the installer writes:
+            //   p1 KB     p2 DKB   p3 EXPDB   p4 UBOOT   p8 LOGO   p9 TEE1   p10 TEE2
+            // UBOOT holds the LK bootloader and TEE1/TEE2 the TrustZone firmware, which is why the
+            // Amonet unlock goes through those rather than through anything in this map.
             PartitionRoles = new Dictionary<string, string>
             {
-                ["BOOT"] = "p5",
-                ["RECOVERY"] = "p6",
-                ["SYSTEM"] = "p11",
-                ["CACHE"] = "p12",
-                ["USERDATA"] = "p13",
+                ["BOOT"] = "p5",      // GPT "boot",     16 MiB, "ANDROID!" header at offset 0
+                ["RECOVERY"] = "p6",   // GPT "recovery", 16 MiB, holds TWRP
+                ["MISC"] = "p7",       // GPT "MISC",      512 KiB
+                ["SYSTEM"] = "p11",    // GPT "system",   1.17 GiB, ext4
+                ["CACHE"] = "p12",     // GPT "cache",     250 MiB, ext4
+                ["USERDATA"] = "p13",  // GPT "userdata", 13.08 GiB, ext4
             },
             BootPartitionBytes = 16L * 1024 * 1024,
             RecoveryPartitionBytes = 16L * 1024 * 1024,
@@ -393,12 +399,13 @@ public static class DeviceCatalog
                 "It is a MediaTek MT8127, not an Exynos 9810: the LK bootloader, the TrustZone firmware and the boot chain here are different parts, and none of them are in this repository.",
                 "Its storage is 512-byte sectors. The Windows image build lays out a 4Kn volume, so it would have to be rebuilt for this device before it could be written.",
                 "No UEFI build for this board exists here. Windows on ARM needs an EDK2 Platform package for the MT8127, and none has been written.",
-                "USERDATA is about 13 GiB, and Windows on ARM needs well over 32 GiB to install. The tablet cannot hold it as it is partitioned.",
+                "USERDATA is 13.08 GiB. The installer refuses below 32 GiB, so the partition would have to be rebuilt first, and its size is set by the tablet's GPT rather than by this project.",
             ],
             Notes =
             [
                 "ro.product.model reads omni_ford rather than a retail name, so the catalog matches on the device codename. The panel is 1024x1200 at 160 dpi, which is the 7-inch Fire 7.",
-                "The roles above were confirmed on the tablet; the MTK scatter file shipped with the Fire tooling describes a different storage layout and must not be used to fill this in.",
+                "The roles above come from the tablet's own GPT, not from the MTK scatter file shipped with the Fire tooling: that file describes project htt27_tb_kk with a 32 GiB USRDATA, and only one of its twelve partitions lines up with this tablet.",
+                "The bootloader sits in its own eMMC boot hardware and not in the GPT: mmcblk0boot0 and mmcblk0boot1 are 4 MiB each and outside every partition above, and boot1 opens with the tag board_id. The preloader lives there, which is what bootrom-step.sh replaces.",
                 "This bootloader is already unlocked: ro.boot.unlocked_kernel is true and the tablet is running an unlocked custom ROM with TWRP installed, which is the end state of the Amonet bootrom-step.sh and fastboot-step.sh run.",
                 "Unlocking this class of tablet goes through the boot ROM, not through a fused flag. The ROM appears as USB 0e8d:0003 and the preloader as 0e8d:2000, neither of which is a vendor identity while Android is running - there adbd uses Google's 18d1.",
             ],

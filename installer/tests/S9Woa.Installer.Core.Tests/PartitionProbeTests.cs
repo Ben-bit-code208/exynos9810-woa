@@ -133,28 +133,28 @@ public class PartitionProbeTests
         Assert.Equal(14_043_168_256, layout.SizeOf("USERDATA"));
         Assert.Equal(1_258_291_200, layout.SizeOf("SYSTEM"));
 
-        // Roles the profile does not claim stay absent: it must not guess BOOT out of thin air.
-        Assert.False(layout.Has("MISC"));
-        Assert.Equal(5, layout.ByName.Count);
+        // Roles the profile does not claim stay absent: it must not guess at the ones the
+        // installer never writes, even though the tablet's GPT names every one of them.
+        Assert.False(layout.Has("TEE1"));
+        Assert.False(layout.Has("UBOOT"));
+        Assert.Equal(6, layout.ByName.Count);
     }
 
     [Fact]
     public void RefusesToWriteToATabletThatCannotHoldWindows()
     {
-        var raw = SysfsLayoutParser.Parse(FireHd8Output)!;
+        var layout = SysfsLayoutParser.Parse(FireHd8Output)!.ResolvedByRoles(DeviceCatalog.Ford);
 
-        // As measured, the tablet has no MISC partition at all, and that is what stops it first.
-        var missing = raw.ResolvedByRoles(DeviceCatalog.Ford);
-        Assert.Contains("no partition named MISC", missing.CheckAgainst(DeviceCatalog.Ford)!, StringComparison.OrdinalIgnoreCase);
-
-        // And even if MISC were among the five partitions not yet identified, the sector size
-        // refuses it on its own: this profile builds 4Kn boot volumes, this tablet has 512-byte ones.
-        var withMisc = DeviceCatalog.Ford with
+        // Every partition the installer needs is present, MISC included - it is p7, which the
+        // tablet's GPT calls MISC. The blocker is the storage, not a missing partition.
+        foreach (var role in PartitionMap.RequiredPartitions)
         {
-            PartitionRoles = new Dictionary<string, string>(DeviceCatalog.Ford.PartitionRoles) { ["MISC"] = "p8" },
-        };
-        var problem = raw.ResolvedByRoles(withMisc).CheckAgainst(withMisc)!;
+            Assert.True(layout.Has(role), $"the tablet has no {role}");
+        }
+
+        var problem = layout.CheckAgainst(DeviceCatalog.Ford)!;
         Assert.Contains("512-byte sectors", problem, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("no partition named", problem, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
