@@ -67,7 +67,8 @@ public class PartitionProbeTests
     }
 
     /// <summary>
-    /// Captured from a real Amazon Fire HD 8 (product:lineage_ford, ro.boot.hardware=mt8127), the
+    /// Captured from a real Amazon Fire 7 5th gen (ro.product.device=ford, ro.boot.hardware=mt8127,
+    /// 1024x1200 at 160 dpi), the
     /// first non-Samsung phone the prober was run against. It found the two things the Samsung-only
     /// version of the command got wrong: the storage unit is <c>mmcblk0</c>, not <c>sda</c>, and this
     /// device has no <c>/dev/block/by-name</c> links at all.

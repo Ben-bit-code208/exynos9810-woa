@@ -365,14 +365,14 @@ public static class DeviceCatalog
         {
             Id = "ford",
             Codename = "ford",
-            MarketingName = "Amazon Fire HD 8 (8th generation)",
+            MarketingName = "Amazon Fire 7 (5th generation, 2019)",
             SoC = "MediaTek MT8127",
             HardwareToken = "mt8127",
             Architecture = TargetArchitecture.Arm64,
             Tier = SupportTier.Candidate,
             Variants =
             [
-                new("Fire", "ford", "all regions"),
+                new("omni_ford", "ford", "all regions"),
             ],
             // No names exist on this device, so these are facts rather than defaults. Every entry was
             // read off the tablet: SYSTEM, CACHE and USERDATA from its own /etc/fstab and
@@ -397,8 +397,10 @@ public static class DeviceCatalog
             ],
             Notes =
             [
+                "ro.product.model reads omni_ford rather than a retail name, so the catalog matches on the device codename. The panel is 1024x1200 at 160 dpi, which is the 7-inch Fire 7.",
                 "The roles above were confirmed on the tablet; the MTK scatter file shipped with the Fire tooling describes a different storage layout and must not be used to fill this in.",
-                "A MediaTek tablet of this class is unlocked through the boot ROM rather than through a fused flag: a BROM payload opens the LK bootloader, and fastboot follows. No copy of those payloads is intact on this machine.",
+                "This bootloader is already unlocked: ro.boot.unlocked_kernel is true and the tablet is running an unlocked custom ROM with TWRP installed, which is the end state of the Amonet bootrom-step.sh and fastboot-step.sh run.",
+                "Unlocking this class of tablet goes through the boot ROM, not through a fused flag. The ROM appears as USB 0e8d:0003 and the preloader as 0e8d:2000, neither of which is a vendor identity while Android is running - there adbd uses Google's 18d1.",
             ],
         },
     ];
